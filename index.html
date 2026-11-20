@@ -927,7 +927,7 @@ const LBUILD = { dowser: buildDowser, bullwheel: buildBullwheel, plumbline: buil
    (see TEXTURE-BAKE-SPEC.md there).  The PNGs below are data URIs so this
    staging file and its self-contained builds need no external texture
    requests.  The hull bake replaces Eagle's runtime-generated 1024px
-   detail canvas; the NASA worm is a prototype homage approximation. */
+   detail canvas; the NASA worm uses the official artwork Steve supplied. */
 const EAGLE_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["eagle2-hull"]) || "textures/eagle2-hull-bake.png";
 const EAGLE_NASA_DECAL_URI = (window.BAKE_URIS && window.BAKE_URIS["eagle2-nasa"]) || "textures/eagle2-nasa-decal.png";
 const DOWSER_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["dowser-hull"]) || "textures/dowser-hull-bake.png";
@@ -1158,13 +1158,14 @@ function textureEagleProof(g){
   decal.name = 'eagle_stencil';
   g.add(decal);
 
-  // NASA "worm" homage decal (offline bake: eagle2-nasa-decal.png, NASA
-  // red #FC3D21 on transparency).  Same decal-plane method as the stencil:
+  // NASA "worm" decal — OFFICIAL artwork supplied by Steve (2026-11-20),
+  // keyed + upscaled offline from nasa-worm-source.jpg by
+  // game-qa/textures/generate_nasa_worm_official.py (flat red sampled
+  // from the source: #C70220).  Same decal-plane method as the stencil:
   // 12 mm proud of the cabin's flat front face (z = 1.5).  Placement:
   // centre (-0.52, 2.27), 1.30 x 0.406 m — the upper-left cabin band,
   // above the EAGLE 2 stencil, left of the hatch (x 0.4..1.0) and its
-  // handrails (x 0.23 / 1.17), below the window band.  Prototype homage
-  // approximation only — production needs official NASA artwork.
+  // handrails (x 0.23 / 1.17), below the window band.
   const nasa = new THREE.Mesh(new THREE.PlaneGeometry(1.30, 0.40625),
     new THREE.MeshStandardMaterial({ map: imgTex(EAGLE_NASA_DECAL_URI, true), transparent: true, metalness: 0.05, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }));
   nasa.position.set(-0.52, 2.27, 1.512);
