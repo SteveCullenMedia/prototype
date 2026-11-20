@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jupiter Approach — Select Your Lander (Prototype)</title>
+<style>
+  :root{
+    --bg:#05070f; --panel:rgba(13,18,34,.72); --line:#26314f; --line-hi:#ff9a3c;
+    --ink:#dfe6f2; --dim:#8b98b4; --gold:#ffb347;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(1px 1px at 12% 22%, #cdd8ff 50%, transparent 51%),
+      radial-gradient(1px 1px at 68% 8%,  #aebfff 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 84% 34%, #ffffff 50%, transparent 51%),
+      radial-gradient(1px 1px at 33% 64%, #93a7dd 50%, transparent 51%),
+      radial-gradient(1px 1px at 52% 88%, #cdd8ff 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 5% 78%, #ffffff 50%, transparent 51%),
+      radial-gradient(1px 1px at 91% 71%, #aebfff 50%, transparent 51%),
+      radial-gradient(1px 1px at 44% 41%, #ffffff 50%, transparent 51%),
+      radial-gradient(1px 1px at 76% 55%, #93a7dd 50%, transparent 51%),
+      radial-gradient(1px 1px at 22% 92%, #aebfff 50%, transparent 51%),
+      radial-gradient(1200px 700px at 70% -10%, #0d1730 0%, transparent 60%),
+      var(--bg);
+    background-color:var(--bg);
+    color:var(--ink);
+    font-family:"Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    min-height:100vh;
+  }
+  #gl{position:fixed; inset:0; z-index:0; pointer-events:none}
+  .wrap{position:relative; z-index:1; max-width:1180px; margin:0 auto; padding:26px 20px 40px}
+  header.top{display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap}
+  .brand{font-size:12px; letter-spacing:.42em; color:var(--dim); text-transform:uppercase}
+  h1{margin:6px 0 2px; font-size:clamp(28px,4.5vw,44px); letter-spacing:.14em; font-weight:700}
+  h1 .thin{color:var(--line-hi)}
+  .sub{color:var(--dim); font-size:14px; letter-spacing:.08em}
+  .badge{
+    border:1px solid var(--line-hi); color:var(--gold); border-radius:3px;
+    padding:6px 10px; font-size:11px; letter-spacing:.22em; text-transform:uppercase; white-space:nowrap;
+    background:rgba(255,154,60,.07);
+  }
+  .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:24px}
+  @media (max-width:900px){ .grid{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:580px){ .grid{grid-template-columns:1fr} }
+  .panel{
+    position:relative; height:308px; border:1px solid var(--line); border-radius:6px;
+    background:linear-gradient(180deg, rgba(16,23,44,.35), rgba(8,11,22,.55));
+    cursor:pointer; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .panel:hover{border-color:#3a4a75}
+  .panel.selected{border-color:var(--gold); box-shadow:0 0 0 1px var(--gold), 0 0 26px rgba(255,154,60,.22) inset}
+  .panel .idx{
+    position:absolute; top:8px; left:10px; font-size:11px; letter-spacing:.25em; color:var(--dim);
+    font-family:ui-monospace,"SF Mono",Consolas,monospace;
+  }
+  .panel .hint{
+    position:absolute; top:8px; right:10px; font-size:10px; letter-spacing:.18em; color:#5d6c8d; text-transform:uppercase;
+  }
+  .nameplate{
+    position:absolute; left:0; right:0; bottom:0; padding:9px 12px 10px;
+    background:linear-gradient(180deg, transparent, rgba(4,6,13,.88) 38%);
+    pointer-events:none;
+  }
+  .nameplate .nm{font-size:17px; font-weight:650; letter-spacing:.06em}
+  .panel.selected .nameplate .nm{color:var(--gold)}
+  .nameplate .role{font-size:12px; color:var(--dim); margin-top:1px}
+  #details{
+    margin-top:18px; border:1px solid var(--line); border-left:3px solid var(--gold); border-radius:6px;
+    background:var(--panel); padding:16px 18px 14px;
+  }
+  #details .d-head{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+  #details .d-name{font-size:22px; font-weight:700; letter-spacing:.05em; color:var(--gold)}
+  #details .d-role{color:var(--ink); font-size:14px}
+  #details .d-unlock{margin-left:auto; color:var(--gold); font-size:12.5px; letter-spacing:.04em}
+  .stats{display:grid; grid-template-columns:repeat(5,1fr); gap:12px 18px; margin-top:13px}
+  @media (max-width:800px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  .stat .k{font-size:10.5px; letter-spacing:.22em; color:var(--dim); text-transform:uppercase}
+  .stat .v{font-size:16.5px; margin-top:2px; font-variant-numeric:tabular-nums;
+    font-family:ui-monospace,"SF Mono",Consolas,monospace}
+  .d-extra{display:grid; grid-template-columns:1fr 1fr; gap:12px 18px; margin-top:13px}
+  @media (max-width:800px){ .d-extra{grid-template-columns:1fr} }
+  .d-extra .k{font-size:10.5px; letter-spacing:.22em; color:var(--dim); text-transform:uppercase}
+  .d-extra .v{font-size:13.5px; margin-top:2px; line-height:1.45}
+  .d-extra .v.mono{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-variant-numeric:tabular-nums}
+  footer{margin-top:16px; color:#5d6c8d; font-size:12px; letter-spacing:.03em; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap}
+</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="brand">Jupiter Approach</div>
+      <h1>SELECT YOUR <span class="thin">LANDER</span></h1>
+      <div class="sub">Full Contract — Fleet Review</div>
+    </div>
+    <div class="badge">Prototype — Concept Only</div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <section id="details" aria-live="polite"></section>
+
+  <footer>
+    <span>Models shown at uniform scale for review. Click a lander to inspect it — drag a model to spin it.</span>
+    <span>Concept prototype — not connected to the game.</span>
+  </footer>
+</div>
+
+<script type="module">
+
+import * as THREE from 'three';
+
+/* ---------------- data (stats verbatim from the lander spec) ---------------- */
+const LANDERS = [
+  { id:'eagle2', name:'Eagle 2', role:'The baseline contract lander.',
+    mass:'1.0x', twr:'2.1 g', turn:'95°/s direct', tank:'1.0x', abort:'16.7 s',
+    fly:'The reference feel — neutral, direct, no surprises. What the trainer teaches transfers 1:1.',
+    limits:'P 1.0/0.6/4° · G 2.0/1.2/8° · H 3.2/2.0/12°',
+    unlock:'Available from the start.', speed:1.0 },
+  { id:'dowser', name:'Dowser', role:'Twitchy scout with hazard lidar.',
+    mass:'0.45x', twr:'2.8 g', turn:'150°/s, keeps spinning', tank:'1.1x', abort:'7 s',
+    fly:'Very light and very eager. Rotation keeps going after you let go — fly it with taps, not holds.',
+    limits:'P 0.75/0.5/4° · G 1.5/1.0/8° · H 2.4/1.6/12°',
+    unlock:'Free after the Callisto Training Run.', speed:1.25 },
+  { id:'bullwheel', name:'Bullwheel', role:'Slow, heavy, nearly unstoppable.',
+    mass:'2.4x', twr:'1.7 g (2.4 g after drop)', turn:'50°/s, keeps spinning', tank:'0.95x', abort:'25 s',
+    fly:'All momentum. Plan every burn early, and expect a different ship once the drop tanks are gone.',
+    limits:'P 1.0/0.6/4° · G 2.0/1.2/8° · H 4.5/2.6/15°',
+    unlock:'Free at the Founding Charter (all four Galilean moons).', speed:0.7 },
+  { id:'plumbline', name:'Plumbline', role:'Slides sideways without tilting.',
+    mass:'1.15x', twr:'1.9 g', turn:'55°/s, self-levels', tank:'1.0x + 75 s side tank', abort:'16.7 s',
+    fly:'Translates laterally on its outriggers while the hull stays upright — precise, but a different muscle memory.',
+    limits:'P 1.0/0.75/3° · G 2.0/1.5/5° · H 3.2/2.5/8°',
+    unlock:'Hard Ground specialist pack.', speed:0.85 },
+  { id:'highline', name:'Highline', role:'Lowers its base on a swinging cable.',
+    mass:'0.9x', twr:'2.8 g', turn:'95°/s', tank:'1.4x', abort:'16.7 s',
+    fly:'You are not landing the ship — you are landing the pod at the end of the cable. Mind the swing.',
+    limits:'(the pod) P 0.8/0.4/4° · G 1.5/0.8/8° · H 2.5/1.4/12°',
+    unlock:'Hard Ground specialist pack.', speed:1.0 },
+  { id:'holdfast', name:'Holdfast', role:'Harpoons itself to small rocks; lands on slopes.',
+    mass:'1.1x', twr:'1.45 g', turn:'125°/s', tank:'1.25x', abort:'16.7 s',
+    fly:'Low thrust, fast turning, and legs that bite. Fire the harpoons and the slope stops mattering — you are committed.',
+    limits:'P 1.2/0.6/4° · G 2.4/1.2/8° · H 3.8/2.0/20°',
+    unlock:'Hard Ground specialist pack.', speed:1.1 },
+];
+
+
+// ===== extracted verbatim from Jupiter_Approach.html, script block 4 (RENDER3D) =====
+  const DEG = Math.PI / 180, TAU = Math.PI * 2;
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v, lerp = (a, b, k) => a + (b - a) * k;
+  const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  const nrm = a => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  function h2(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+  function vn(x, y) { const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    return lerp(lerp(h2(xi, yi), h2(xi + 1, yi), u), lerp(h2(xi, yi + 1), h2(xi + 1, yi + 1), u), v); }
+  function fbm(x, y, o) { let s = 0, a = 0.5, n = 0; for (let i = 0; i < o; i++) { s += a * vn(x, y + i * 17.3); n += a; a *= 0.5; x *= 2.03; y *= 2.03; } return s / n; }
+  function ridged(x, y, o) { let s = 0, a = 0.5, n = 0, w = 1; for (let i = 0; i < o; i++) { let r = 1 - Math.abs(2 * vn(x, y + i * 31.7) - 1); r *= r * w; w = clamp(r * 1.6, 0, 1); s += a * r; n += a; a *= 0.5; x *= 2.07; y *= 2.07; } return s / n; }
+  function crinkleNormals(n) {   // foil crinkle normal map
+    const d = new Uint8Array(n * n * 4);
+    const hh = (x, y) => fbm(x / n * 9, y / n * 9, 3) * 0.7 + ridged(x / n * 23 + 5, y / n * 23, 2) * 0.5;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      const dx = hh((x + 1) % n, y) - hh((x - 1 + n) % n, y), dy = hh(x, (y + 1) % n) - hh(x, (y - 1 + n) % n);
+      const v = nrm([-dx * 6, -dy * 6, 1]), i = (y * n + x) * 4; d[i] = (v[0] * 0.5 + 0.5) * 255; d[i + 1] = (v[1] * 0.5 + 0.5) * 255; d[i + 2] = (v[2] * 0.5 + 0.5) * 255; d[i + 3] = 255;
+    }
+    const t = new THREE.DataTexture(d, n, n, THREE.RGBAFormat); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.needsUpdate = true; return t;
+  }
+
+  const SHEAR_K = 0.32;
+  function mkKit(C, off) {
+    const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]], mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const len = a => Math.hypot(a[0], a[1], a[2]), lp = (a, b, t) => add(a, mul(sub(b, a), t));
+    const mean = P => mul(P.reduce(add, [0, 0, 0]), 1 / P.length);
+    const roty = d => { const c = Math.cos(d * DEG), s = Math.sin(d * DEG); return [[c, 0, s], [0, 1, 0], [-s, 0, c]]; };
+    const rotx = d => { const c = Math.cos(d * DEG), s = Math.sin(d * DEG); return [[1, 0, 0], [0, c, -s], [0, s, c]]; };
+    const rotz = d => { const c = Math.cos(d * DEG), s = Math.sin(d * DEG); return [[c, -s, 0], [s, c, 0], [0, 0, 1]]; };
+    const mv3 = (M, v) => [dot(M[0], v), dot(M[1], v), dot(M[2], v)];
+    const mm3 = (A, B) => A.map(r => [0, 1, 2].map(j => r[0] * B[0][j] + r[1] * B[1][j] + r[2] * B[2][j]));
+    const basis = ax => { const a = nrm(ax), t = Math.abs(a[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], u = nrm(crs(a, t)); return [a, u, crs(a, u)]; };
+    const newell = P => { let n = [0, 0, 0]; for (let i = 0; i < P.length; i++) { const a = P[i], b = P[(i + 1) % P.length]; n = add(n, [(a[1] - b[1]) * (a[2] + b[2]), (a[2] - b[2]) * (a[0] + b[0]), (a[0] - b[0]) * (a[1] + b[1])]); } return n; };
+    const K = { paint: [], metal: [], foil: [], glass: [], dark: [], lamp: [] };   // per material: x y z nx ny nz r g b u v
+    const O = off || [0, 0, 0];   // where the builder's origin sits in the model (the new landers are drawn ground-up, feet at y = 0)
+    const FOIL_S = 3.2;   // metres per tile of the crinkle normal map
+    const tri = (k, p, n, c, uv) => { (K[k] || (K[k] = [])).push(p[0] + O[0], p[1] + O[1], p[2] + O[2], n[0], n[1], n[2], c[0], c[1], c[2], uv ? uv[0] : 0, uv ? uv[1] : 0); };
+    // one polygon (convex, planar or nearly so), turned to face away from ctr (or toward it with inward); ns: smooth normals per vertex
+    function face(P, k, c, ctr, o) {
+      o = o || {}; let n = newell(P); const l = len(n); if (l < 1e-9) return; n = mul(n, 1 / l);
+      let ns = o.ns, uv = o.uv, flip = dot(n, sub(mean(P), ctr)) < 0; if (o.inward) flip = !flip;
+      if (flip) { n = mul(n, -1); P = P.slice().reverse(); if (ns) ns = ns.slice().reverse(); if (uv) uv = uv.slice().reverse(); }
+      if (o.off) P = P.map(p => add(p, mul(n, o.off)));
+      if (!uv && k.startsWith('foil')) { const t = nrm(sub(P[1], P[0])), b = crs(n, t); uv = P.map(p => [dot(p, t) / FOIL_S, dot(p, b) / FOIL_S]); }
+      for (let i = 1; i < P.length - 1; i++) for (const j of [0, i, i + 1]) tri(k, P[j], ns ? ns[j] : n, c, uv && uv[j]);
+    }
+    const both = (P, k, c) => { const n = nrm(newell(P)), m = mean(P); face(P, k, c, sub(m, n)); face(P, k, c, add(m, n)); };
+    const bil = (P, u, v) => add(mul(add(mul(P[0], 1 - u), mul(P[1], u)), 1 - v), mul(add(mul(P[3], 1 - u), mul(P[2], u)), v));
+    // rings bottom to top (same count, closed loops); band(b, s) -> [key, colour], 'SKIP' or null; decals [b, s, [[u, v] x4], key, colour, level]
+    function loft(rings, k, c, o) {
+      o = o || {}; const ctr = mean(rings.flat()), n = rings[0].length;
+      for (let b = 0; b < rings.length - 1; b++) for (let s = 0; s < n; s++) {
+        const P = [rings[b][s], rings[b][(s + 1) % n], rings[b + 1][(s + 1) % n], rings[b + 1][s]], bm = o.band && o.band(b, s);
+        if (bm === 'SKIP') continue;
+        face(P, bm ? bm[0] : k, bm ? bm[1] : c, ctr);
+        for (const d of o.decals || []) if (d[0] === b && d[1] === s) face(d[2].map(([u, v]) => bil(P, u, v)), d[3], d[4], ctr, { off: 0.012 * (d[5] || 1) });
+      }
+      const cap = o.cap || [k, c];
+      if (o.caps !== false) { face(rings[0], cap[0], cap[1], ctr); face(rings[rings.length - 1], cap[0], cap[1], ctr); }
+    }
+    const box = (ctr, s, k, c, R) => { const [hx, hy, hz] = mul(s, 0.5), ring = y => [[hx, hz], [hx, -hz], [-hx, -hz], [-hx, hz]].map(([x, z]) => add(ctr, R ? mv3(R, [x, y, z]) : [x, y, z])); loft([ring(-hy), ring(hy)], k, c); };
+    const prism = (poly, y0, y1, k, c) => loft([poly.map(([x, z]) => [x, y0, z]), poly.map(([x, z]) => [x, y1, z])], k, c);
+    // a cone or cylinder between two points: smooth sides, flat caps (caps: [bottom, top] as [key, colour] or false)
+    function frustum(p0, p1, r0, r1, k, c, n, o) {
+      o = o || {}; n = n || 16; const [a, u, w] = basis(sub(p1, p0)), L = len(sub(p1, p0)), ph = o.phase || 0, ctr = lp(p0, p1, 0.5);
+      const dir = i => { const t = ph + TAU * i / n; return add(mul(u, Math.cos(t)), mul(w, Math.sin(t))); };
+      const foil = k.startsWith('foil'), rm = (r0 + r1) / 2;
+      for (let i = 0; i < n; i++) {
+        const d0 = dir(i), d1 = dir(i + 1), n0 = nrm(add(mul(d0, L), mul(a, r0 - r1))), n1 = nrm(add(mul(d1, L), mul(a, r0 - r1)));
+        const P = [add(p0, mul(d0, r0)), add(p0, mul(d1, r0)), add(p1, mul(d1, r1)), add(p1, mul(d0, r1))], ns = [n0, n1, n1, n0];
+        const uv = foil ? [[i, 0], [i + 1, 0], [i + 1, L], [i, L]].map(([q, h]) => [q / n * TAU * rm / FOIL_S, h / FOIL_S]) : null;
+        if (r0 < 1e-6) face([P[0], P[2], P[3]], k, c, ctr, { ns: [a.map(x => -x), n1, n0] }); else if (r1 < 1e-6) face([P[0], P[1], P[2]], k, c, ctr, { ns: [n0, n1, a] }); else face(P, k, c, ctr, { ns, uv });
+      }
+      const cp = o.caps === undefined ? [[k, c], [k, c]] : o.caps;
+      const ring = (p, r) => { const R = []; for (let i = 0; i < n; i++) R.push(add(p, mul(dir(i), r))); return R; };
+      if (cp && cp[0] && r0 > 1e-6) face(ring(p0, r0), cp[0][0], cp[0][1], p1);
+      if (cp && cp[1] && r1 > 1e-6) face(ring(p1, r1), cp[1][0], cp[1][1], p0);
+    }
+    const strut = (p0, p1, r, k, c, n) => frustum(p0, p1, r, r, k, c, n || 8);
+    function sphere(ctr, r, k, c, nu, nv) {
+      const pt = (i, j) => [Math.sin(Math.PI * j / nv) * Math.cos(TAU * i / nu), Math.cos(Math.PI * j / nv), Math.sin(Math.PI * j / nv) * Math.sin(TAU * i / nu)];
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) {
+        let D = [pt(i, j), pt(i + 1, j), pt(i + 1, j + 1), pt(i, j + 1)];
+        if (j === 0) D = [D[0], D[2], D[3]]; else if (j === nv - 1) D = [D[0], D[1], D[2]];
+        face(D.map(d => add(ctr, mul(d, r))), k, c, ctr, { ns: D });
+      }
+    }
+    function bell(top, bot, rt, rb, n) {   // a gently curved nozzle, dark outside, heat-tinted inside
+      const prof = [[0, rt], [0.35, rt + (rb - rt) * 0.22], [0.7, rt + (rb - rt) * 0.6], [1, rb]], [a, u, w] = basis(sub(bot, top)), L = len(sub(bot, top)), ctr = lp(top, bot, 0.5);
+      const dir = i => add(mul(u, Math.cos(TAU * i / n)), mul(w, Math.sin(TAU * i / n)));
+      for (let b = 0; b < 3; b++) { const [h0, r0] = prof[b], [h1, r1] = prof[b + 1], q0 = add(top, mul(a, h0 * L)), q1 = add(top, mul(a, h1 * L)), sl = (r1 - r0) / ((h1 - h0) * L);
+        for (let i = 0; i < n; i++) { const d0 = dir(i), d1 = dir(i + 1), n0 = nrm(sub(d0, mul(a, sl))), n1 = nrm(sub(d1, mul(a, sl)));
+          const P = [add(q0, mul(d0, r0)), add(q0, mul(d1, r0)), add(q1, mul(d1, r1)), add(q1, mul(d0, r1))];
+          face(P, 'dark', C.bell, ctr, { ns: [n0, n1, n1, n0] }); face(P, 'dark', C.bellIn, ctr, { inward: true, ns: [n0, n1, n1, n0].map(v => mul(v, -1)) }); } }
+    }
+    // a body of revolution: prof [[h, r], ...] from base along ax; normals smooth around and, where the profile bends gently, along it
+    function lathe(base, ax, prof, k, c, n, o) {
+      o = o || {}; n = n || 20; const [a, u, w] = basis(ax), ph = o.phase || 0, ctr = add(base, mul(a, (prof[0][0] + prof[prof.length - 1][0]) / 2));
+      const dir = i => add(mul(u, Math.cos(ph + TAU * i / n)), mul(w, Math.sin(ph + TAU * i / n)));
+      const bn = []; for (let b = 0; b < prof.length - 1; b++) { const dh = prof[b + 1][0] - prof[b][0], dr = prof[b + 1][1] - prof[b][1], l = Math.hypot(dh, dr) || 1; bn.push([dh / l, -dr / l]); }
+      const rn = (b, e) => { let q = bn[b]; const nb = e ? bn[b + 1] : bn[b - 1]; if (nb && q[0] * nb[0] + q[1] * nb[1] > 0.8) q = [q[0] + nb[0], q[1] + nb[1]]; const l = Math.hypot(q[0], q[1]) || 1; return [q[0] / l, q[1] / l]; };
+      const pt = (h, d, r) => add(add(base, mul(a, h)), mul(d, r)), nv = (d, q) => add(mul(d, q[0]), mul(a, q[1]));
+      for (let b = 0; b < prof.length - 1; b++) {
+        const [h0, r0] = prof[b], [h1, r1] = prof[b + 1], bm = o.band && o.band(b), kk = bm ? bm[0] : k, cc = bm ? bm[1] : c, n0 = rn(b, 0), n1 = rn(b, 1);
+        for (let i = 0; i < n; i++) { const d0 = dir(i), d1 = dir(i + 1), P = [pt(h0, d0, r0), pt(h0, d1, r0), pt(h1, d1, r1), pt(h1, d0, r1)], N = [nv(d0, n0), nv(d1, n0), nv(d1, n1), nv(d0, n1)];
+          if (r0 < 1e-6) face([P[0], P[2], P[3]], kk, cc, ctr, { ns: [N[0], N[2], N[3]] }); else if (r1 < 1e-6) face([P[0], P[1], P[2]], kk, cc, ctr, { ns: [N[0], N[1], N[2]] }); else face(P, kk, cc, ctr, { ns: N }); }
+      }
+      const ring = (h, r) => { const R = []; for (let i = 0; i < n; i++) R.push(pt(h, dir(i), r)); return R; }, f = prof[0], l = prof[prof.length - 1];
+      if (o.caps !== false) { if (f[1] > 1e-6) face(ring(f[0], f[1]), k, c, add(base, mul(a, f[0] + 1))); if (l[1] > 1e-6) face(ring(l[0], l[1]), k, c, add(base, mul(a, l[0] - 1))); }
+    }
+    // a flat plate (a fin, a bracket): a convex outline lying in one plane, given a thickness
+    function plate(P, th, k, c) {
+      const n = nrm(newell(P)), h = mul(n, th / 2), A = P.map(p => sub(p, h)), B = P.map(p => add(p, h)), ctr = mean(P);
+      face(A, k, c, ctr); face(B, k, c, ctr);
+      for (let i = 0; i < P.length; i++) { const j = (i + 1) % P.length; face([A[i], A[j], B[j], B[i]], k, c, ctr); }
+    }
+    // the merged meshes, one per material, in a group (userData.tris; the lamps' mesh in userData.lamps)
+    function finish(M, name) {
+      const g = new THREE.Group(); g.userData.tris = 0;
+      for (const k of Object.keys(K)) {
+        const a = K[k], nv = a.length / 11; if (!nv) continue;
+        const P = new Float32Array(nv * 3), N = new Float32Array(nv * 3), Cl = new Float32Array(nv * 3), U = new Float32Array(nv * 2);
+        for (let i = 0; i < nv; i++) { const o = i * 11; P.set(a.slice(o, o + 3), i * 3); N.set(a.slice(o + 3, o + 6), i * 3); Cl.set(a.slice(o + 6, o + 9), i * 3); U.set(a.slice(o + 9, o + 11), i * 2); }
+        const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(P, 3)); geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+        if (M[k].vertexColors) geo.setAttribute('color', new THREE.BufferAttribute(Cl, 3));
+        if (k.startsWith('foil')) geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+        geo.computeBoundingSphere();
+        const m = new THREE.Mesh(geo, M[k]); m.castShadow = k !== 'lamp'; m.receiveShadow = k !== 'lamp'; m.name = name + '_' + k; g.add(m); g.userData.tris += nv / 3;
+        if (k === 'lamp') g.userData.lamps = m;
+      }
+      return g;
+    }
+    return { sub, add, mul, dot, crs, len, lp, mean, roty, rotx, rotz, mv3, mm3, basis, newell, bil, face, both, loft, box, prism, frustum, strut, sphere, bell, lathe, plate, finish, K };
+  }
+  // ---------- Eagle 2, Prospector-class (design Option 2): the game's original 2D lander carried into 3D ----------
+  // Built part for part from the design model, in metres: x along the flight line, y up, +z toward the camera. The legs stand 20 degrees
+  // off the flight axis with the pads at radius 4.47, so the outer pads sit at x = +-4.2 (LEG) and every pad's underside at y = -3.2
+  // (FOOT_Y), where the physics has the feet. Flat faces stay faceted, round parts are smooth; every part of one material goes into a
+  // single buffer, so the whole craft is six draw calls. Returns the meshes in a group (the lamps' mesh is in userData.lamps).
+  function buildEagle(crk) {
+    const cc = new THREE.Color(), col = (r, g, b) => { cc.setRGB(r, g, b, THREE.SRGBColorSpace); return [cc.r, cc.g, cc.b]; };
+    // colours from the design model (sRGB)
+    const C = { cabin: col(0.93, 0.94, 0.95), cabTop: col(0.84, 0.86, 0.88), compW: col(0.86, 0.87, 0.88), compG: col(0.6, 0.62, 0.66), deck: col(0.16, 0.17, 0.19),
+      stripe: col(0.88, 0.44, 0.16), hatch: col(0.68, 0.71, 0.75), rail: col(0.95, 0.78, 0.15), dark: col(0.12, 0.12, 0.13), white: col(0.95, 0.95, 0.95),
+      titan: col(0.55, 0.57, 0.6), chrome: col(0.82, 0.83, 0.86), padM: col(0.7, 0.72, 0.75), sleeve: col(0.42, 0.45, 0.5), sleeveOr: col(0.9, 0.42, 0.12),
+      cfrp: col(0.2, 0.19, 0.18), panel: col(0.15, 0.2, 0.34), bell: col(0.3, 0.3, 0.32), bellIn: col(0.36, 0.22, 0.14), gold: [1, 1, 1], glass: [1, 1, 1],
+      lamp: col(1, 0.97, 0.85), red: col(1, 0.3, 0.25), green: col(0.4, 1, 0.5) };
+    const EK = mkKit(C), { sub, add, mul, len, lp, roty, rotx, rotz, mv3, mm3, face, both, loft, box, prism, frustum, strut, sphere, bell } = EK;
+    // ---- descent stage: an octagon (apothem 2.45) with chamfered edges, white and grey composite faces, gold foil underneath, open tank bays
+    const T22 = Math.tan(22.5 * DEG), oct = (ap, y) => { const R = ap / Math.cos(22.5 * DEG), P = []; for (let k = 0; k < 8; k++) { const t = (22.5 + 45 * k) * DEG; P.push([R * Math.cos(t), y, R * Math.sin(t)]); } return P; };
+    loft([oct(2.02, -1.05), oct(2.45, -0.62), oct(2.45, 0.9), oct(2.3, 1.05)], 'paint', C.compW, { cap: ['paint', C.deck],
+      band: (b, s) => b === 0 ? ['foil', C.gold] : b === 1 ? (s % 2 === 0 ? 'SKIP' : ['paint', s === 1 || s === 5 ? C.compW : C.compG]) : ['paint', C.compG],
+      decals: [0, 1, 2, 3, 4, 5, 6, 7].map(s => [2, s, [[0, 0.2], [1, 0.2], [1, 0.55], [0, 0.55]], 'paint', C.stripe]) });
+    for (let k = 0; k < 4; k++) {
+      const a = (45 + 90 * k) * DEG, nn = [Math.cos(a), 0, Math.sin(a)], t = [-Math.sin(a), 0, Math.cos(a)], hw = 2.45 * T22;
+      const F = (u, y, d) => add(add(mul(nn, d == null ? 2.45 : d), mul(t, u)), [0, y, 0]), ctr = mul(nn, 1.2);
+      for (const q of [[F(-hw, -0.62), F(-0.64, -0.62), F(-0.64, 0.9), F(-hw, 0.9)], [F(0.64, -0.62), F(hw, -0.62), F(hw, 0.9), F(0.64, 0.9)], [F(-0.64, 0.58), F(0.64, 0.58), F(0.64, 0.9), F(-0.64, 0.9)]]) face(q, 'paint', C.compW, ctr);
+      // the bay: back wall, sides, ceiling and floor, dark both ways
+      for (const q of [[F(-0.64, -0.62, 2.08), F(0.64, -0.62, 2.08), F(0.64, 0.58, 2.08), F(-0.64, 0.58, 2.08)], [F(-0.64, -0.62, 2.08), F(-0.64, -0.62), F(-0.64, 0.58), F(-0.64, 0.58, 2.08)],
+        [F(0.64, -0.62, 2.08), F(0.64, -0.62), F(0.64, 0.58), F(0.64, 0.58, 2.08)], [F(-0.64, 0.58, 2.08), F(0.64, 0.58, 2.08), F(0.64, 0.58), F(-0.64, 0.58)],
+        [F(-0.64, -0.62, 2.08), F(0.64, -0.62, 2.08), F(0.64, -0.62), F(-0.64, -0.62)]]) both(q, 'dark', C.dark);
+      const tank = add(mul(nn, 1.92), [0, -0.02, 0]);
+      sphere(tank, 0.6, 'dark', C.cfrp, 16, 9);
+      frustum(add(tank, [0, -0.07, 0]), add(tank, [0, 0.07, 0]), 0.62, 0.62, 'metal', C.titan, 16);
+    }
+    { const R = 2.52 / Math.cos(22.5 * DEG), P = []; for (let k = 0; k < 8; k++) { const t = (22.5 + 45 * k) * DEG; P.push([R * Math.cos(t), R * Math.sin(t)]); } prism(P, 0.92, 1.02, 'paint', C.deck); }   // deck plate
+    for (const p of [[-0.6, -0.8, 2.27], [0.45, -0.8, 2.27], [1.62, -0.8, 1.62]]) sphere(p, 0.1, 'lamp', C.lamp, 8, 5);   // LED landing lights
+    sphere([-1.55, -0.85, 1.6], 0.2, 'glass', C.glass, 12, 7);   // hazard-avoidance lidar
+    frustum([-1.55, -0.72, 1.6], [-1.55, -0.62, 1.6], 0.26, 0.26, 'metal', C.titan, 12);
+    // the engine: gold-foiled chamber, gimbal ring, bell (exit plane y = -2.05, radius 0.98: where the plume starts)
+    frustum([0, -0.9, 0], [0, -1.25, 0], 0.44, 0.44, 'foil', C.gold, 16);
+    frustum([0, -1.08, 0], [0, -1.16, 0], 0.52, 0.52, 'dark', C.dark, 16);
+    bell([0, -1.12, 0], [0, -2.05, 0], 0.34, 0.98, 28);
+    // ---- legs: four, 20 degrees off the flight axis; orange sleeves, chrome lower struts, pads with orange rims; ladder on the front-left leg
+    for (let k = 0; k < 4; k++) {
+      const R = roty(-(20 + 90 * k)), L = (r, y, z) => mv3(R, [r, y, z || 0]);
+      const A = L(2.32, 0.6), B = L(4.47, -2.88), AB = t => lp(A, B, t), Kn = AB(0.62);
+      box(A, [0.3, 0.3, 0.36], 'paint', C.dark, R);
+      strut(A, AB(0.52), 0.085, 'metal', C.sleeveOr, 10);
+      for (const tt of [0.04, 0.5]) frustum(AB(tt - 0.015), AB(tt + 0.02), 0.105, 0.105, 'metal', C.titan, 10);
+      strut(AB(0.5), B, 0.052, 'metal', C.chrome, 8);
+      sphere(B, 0.1, 'metal', C.titan, 8, 5);
+      for (const zs of [-1, 1]) {
+        strut(L(2.24, -0.86, zs * 0.78), add(Kn, mv3(R, [0, 0, zs * 0.11])), 0.035, 'metal', C.titan, 6);
+        strut(L(2.4, 0.32, zs * 0.62), add(AB(0.28), mv3(R, [0, 0, zs * 0.04])), 0.026, 'metal', C.titan, 6);
+      }
+      // the footpad: a shallow dish whose underside is the physics foot (y = -3.2); its orange rim starts 0.11 m up, just over a landing
+      // pad's apron (whose top is the ground the physics lands on), so on a pad the whole dish stands on the deck
+      const pb = L(4.47, -3.2), up = h => add(pb, [0, h, 0]);
+      // the dish in light paint (bare metal mirrored the black sky and vanished on a dark pad) with a broader orange rim
+      frustum(pb, up(0.11), 0.6, 0.66, 'paint', C.padM, 20, { caps: [['paint', C.padM], false] });
+      frustum(up(0.11), up(0.19), 0.7, 0.7, 'paint', C.stripe, 20);
+      frustum(up(0.19), up(0.31), 0.62, 0.12, 'paint', C.padM, 20, { caps: false });
+      if (k === 1) {
+        const la = L(2.62, 0.25), lb = L(4.22, -2.35), side = mv3(R, [0, 0, 1]), nr = Math.floor(len(sub(lb, la)) / 0.3);
+        for (const sg of [-1, 1]) strut(add(la, mul(side, 0.24 * sg)), add(lb, mul(side, 0.24 * sg)), 0.022, 'metal', C.titan, 6);
+        for (let i = 1; i < nr; i++) { const c0 = lp(la, lb, i / nr); strut(sub(c0, mul(side, 0.24)), add(c0, mul(side, 0.24)), 0.017, 'metal', C.titan, 5); }
+      }
+    }
+    // ---- crew cabin: white, boxy, chamfered plan, tapered top, dark window band, orange stripe
+    const cplan = (d, y) => { const w = 1.85 - d, dd = 1.5 - d, c = 0.6 - d * 0.41; return [[w - c, dd], [w, dd - c], [w, -dd + c], [w - c, -dd], [-w + c, -dd], [-w, -dd + c], [-w, dd - c], [-w + c, dd]].map(([x, z]) => [x, y, z]); };
+    const q4 = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]], wv0 = 0.12, wv1 = 0.9;
+    const dec = [[1, 7, q4(0.06, wv0, 0.485, wv1), 'glass', C.glass], [1, 7, q4(0.515, wv0, 0.94, wv1), 'glass', C.glass], [1, 0, q4(0.1, wv0, 0.9, wv1), 'glass', C.glass],
+      [1, 6, q4(0.1, wv0, 0.9, wv1), 'glass', C.glass], [1, 1, q4(0.04, wv0, 0.6, wv1), 'glass', C.glass], [1, 5, q4(0.4, wv0, 0.96, wv1), 'glass', C.glass],
+      [0, 7, q4(0.66, 0.31, 0.9, 0.93), 'paint', C.hatch], [0, 7, q4(0.82, 0.55, 0.86, 0.6), 'paint', C.dark, 2], [0, 3, q4(0.1, 0.35, 0.9, 0.8), 'foil', C.gold],
+      [0, 7, q4(0.08, 0.6, 0.22, 0.68), 'paint', C.stripe]];
+    for (let s = 0; s < 8; s++) dec.push([0, s, q4(0, 0, 1, 0.165), 'paint', C.stripe], [0, s, q4(0, 0.2, 1, 0.235), 'paint', C.deck]);
+    loft([cplan(0, 1.06), cplan(0, 2.5), cplan(0.334, 3.38), cplan(0.574, 3.62)], 'paint', C.cabin, { decals: dec, band: b => b === 2 ? ['paint', C.cabTop] : null });
+    for (const x of [0.23, 1.17]) strut([x, 1.5, 1.58], [x, 2.4, 1.58], 0.022, 'paint', C.rail, 6);   // hatch handrails
+    frustum([0, 3.4, -0.2], [0, 3.82, -0.2], 0.47, 0.47, 'foil', C.gold, 18);   // docking port (top at y = 3.9, the hull's top point)
+    frustum([0, 3.81, -0.2], [0, 3.9, -0.2], 0.56, 0.56, 'paint', C.white, 18);
+    // antennas: two whips and a flat phased-array panel on a mast
+    strut([-0.75, 3.5, -0.55], [-1.02, 4.5, -0.7], 0.018, 'metal', C.titan, 5); sphere([-1.02, 4.5, -0.7], 0.035, 'metal', C.titan, 6, 4);
+    strut([-0.45, 3.5, -0.8], [-0.55, 4.15, -0.9], 0.015, 'metal', C.titan, 5);
+    strut([0.9, 3.5, -0.7], [1.25, 4.08, -0.85], 0.04, 'metal', C.sleeve, 6);
+    box([1.32, 4.24, -0.86], [0.75, 0.05, 0.55], 'paint', C.panel, mm3(rotz(-30), rotx(15)));
+    // RCS quads on booms at the cabin's four corners (up/down nozzle exits at y 3.35 / 2.55)
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const c = [sx * 1.98, 2.95, sz * 1.98], Rq = roty(-Math.atan2(sz, sx) / DEG);
+      strut([sx * 1.3, 2.95, sz * 1.3], c, 0.055, 'metal', C.titan, 6);
+      box(c, [0.34, 0.42, 0.36], 'paint', C.stripe, Rq);
+      for (const d of [[0, 1, 0], [0, -1, 0]]) frustum(add(c, mul(d, 0.21)), add(c, mul(d, 0.4)), 0.035, 0.08, 'dark', C.bell, 8, { caps: [false, ['dark', C.dark]] });
+      const td = mv3(Rq, [0, 0, 1]);
+      for (const sg of [-1, 1]) frustum(add(c, mul(td, sg * 0.18)), add(c, mul(td, sg * 0.36)), 0.03, 0.07, 'dark', C.bell, 8, { caps: [false, ['dark', C.dark]] });
+    }
+    sphere([-2.12, 2.95, 2.12], 0.06, 'lamp', C.red, 8, 5); sphere([2.12, 2.95, 2.12], 0.06, 'lamp', C.green, 8, 5);   // nav lights
+    for (const sx of [-1, 1]) frustum([sx * 1.1, 1.2, 1.4], [sx * 1.1, 1.2, 1.68], 0.13, 0.15, 'paint', C.dark, 12, { caps: [false, ['lamp', C.lamp]] });   // cabin floodlights
+    // ---- materials and meshes
+    const M = {
+      paint: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.05, roughness: 0.5 }),
+      metal: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.32 }),
+      foil: new THREE.MeshStandardMaterial({ color: 0xe0ac48, metalness: 0.6, roughness: 0.34, emissive: 0x5c3e14, normalMap: crk, normalScale: new THREE.Vector2(0.6, 0.6) }),
+      glass: new THREE.MeshStandardMaterial({ color: 0x1c2c44, metalness: 0.5, roughness: 0.12, emissive: 0x060c16 }),
+      dark: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.5 }),
+      lamp: new THREE.MeshBasicMaterial({ vertexColors: true }) };
+    return EK.finish(M, 'eagle');
+  }
+  // ---------- the five new landers (design doc "Jupiter Approach landers", Nov 17) ----------
+  // Each is modelled ground-up from its approved concept model (feet at y = 0, metres, x along the flight line, +z toward the camera) and
+  // shifted down by 3.2 into the frame the game flies Eagle 2 in: the origin is (L.x, L.y) and every lander's feet sit at y = -3.2, so
+  // the game's FOOT_Y holds for all six. R3D.LANDER_FEET (below, filled at load) gives each one's contact points, hull and bell points.
+  const LFOOT = -3.2;
+  const ngon = (n, r, rot, sx, sz) => { const P = []; for (let k = 0; k < n; k++) { const t = (rot || 0) * DEG + TAU * k / n; P.push([(sx || 1) * r * Math.cos(t), (sz || 1) * r * Math.sin(t)]); } return P; };
+  const crect = (w, d, c, fc) => { fc = fc == null ? c : fc; return [[w - fc, d], [w, d - fc], [w, -d + c], [w - c, -d], [-w + c, -d], [-w, -d + c], [-w, d - fc], [-w + fc, d]]; };
+  const ringP = (poly, y, s, dx, dz) => poly.map(([x, z]) => [x * (s || 1) + (dx || 0), y, z * (s || 1) + (dz || 0)]);
+  const atA = (a, r, y) => [r * Math.cos(a * DEG), y, r * Math.sin(a * DEG)];
+  const q4 = (u0, v0, u1, v1) => [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+  function landerPal() {
+    const cc = new THREE.Color(), col = (r, g, b) => { cc.setRGB(r, g, b, THREE.SRGBColorSpace); return [cc.r, cc.g, cc.b]; };
+    return { white: col(0.92, 0.92, 0.92), offwhite: col(0.84, 0.83, 0.8), graphite: col(0.2, 0.21, 0.23), char: col(0.25, 0.26, 0.28), deck: col(0.16, 0.17, 0.19),
+      dark: col(0.12, 0.12, 0.13), black: col(0.07, 0.07, 0.08), titan: col(0.55, 0.57, 0.6), chrome: col(0.82, 0.83, 0.86), silver: col(0.74, 0.76, 0.8), padM: col(0.46, 0.47, 0.5),
+      orange: col(0.95, 0.44, 0.1), yellow: col(0.95, 0.74, 0.1), yelD: col(0.82, 0.6, 0.06), teal: col(0.1, 0.62, 0.66), blue: col(0.18, 0.38, 0.85), coral: col(0.9, 0.33, 0.28),
+      gun: col(0.32, 0.34, 0.37), olive: col(0.36, 0.38, 0.3), grey: col(0.62, 0.64, 0.68), panel: col(0.15, 0.2, 0.34), cable: col(0.85, 0.85, 0.82),
+      bell: col(0.3, 0.3, 0.32), bellIn: col(0.36, 0.22, 0.14), gold: [1, 1, 1], glass: [1, 1, 1], lamp: col(1, 0.97, 0.85), red: col(1, 0.3, 0.25), green: col(0.4, 1, 0.5) };
+  }
+  // the same six surfaces as Eagle 2, plus silver foil; one set per lander (a wreck's soot darkens its own set only)
+  function landerMats(crk) {
+    const M = { paint: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.05, roughness: 0.5 }),
+      metal: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.75, roughness: 0.32 }),
+      foil: new THREE.MeshStandardMaterial({ color: 0xe0ac48, metalness: 0.6, roughness: 0.34, emissive: 0x5c3e14, normalMap: crk, normalScale: new THREE.Vector2(0.6, 0.6) }),
+      foilS: new THREE.MeshStandardMaterial({ color: 0xc4c9d1, metalness: 0.72, roughness: 0.3, emissive: 0x24272c, normalMap: crk, normalScale: new THREE.Vector2(0.6, 0.6) }),
+      glass: new THREE.MeshStandardMaterial({ color: 0x1c2c44, metalness: 0.5, roughness: 0.12, emissive: 0x060c16 }),
+      dark: new THREE.MeshStandardMaterial({ vertexColors: true, metalness: 0.45, roughness: 0.5 }),
+      lamp: new THREE.MeshBasicMaterial({ vertexColors: true }) };
+    for (const k in M) if (M[k].isMeshStandardMaterial) M[k].envMapIntensity = 0.85;
+    return M;
+  }
+  // a concept-model leg: main strut top -> foot (radial angle a), two side braces to a point along it, a footpad dish whose underside is y = 0
+  function legC(K, P, a, top, foot, sec, o) {
+    const T = atA(a, top[0], top[1]), F = atA(a, foot[0], foot[1]), r = o.r, pb = [F[0], 0, F[2]], up = h => [pb[0], h, pb[2]];
+    K.strut(T, F, r, 'metal', o.c, 10);
+    if (o.sleeve) K.frustum(T, K.lp(T, F, o.sleeve[0]), o.sleeve[1], o.sleeve[1], 'paint', o.sleeve[2], 12);
+    const Kn = K.lp(T, F, o.secT || 0.55);
+    for (const sg of [-1, 1]) K.strut(atA(a + sg * sec[2], sec[0], sec[1]), Kn, r * 0.6, 'metal', o.secC || o.c, 8);
+    const R = o.padR, n = o.padN || 18, ph = a * DEG;
+    K.frustum(pb, up(0.1), R * 0.86, R, 'paint', o.padC, n, { phase: ph, caps: [['paint', o.padC], false] });
+    if (o.rim) K.frustum(up(0.1), up(0.15), R + 0.03, R + 0.03, 'paint', o.rim, n, { phase: ph });
+    K.frustum(up(o.rim ? 0.15 : 0.1), up(0.26), R, R * 0.22, 'paint', o.padC, n, { phase: ph, caps: false });
+    K.strut(up(0.22), F, r * 0.9, 'metal', o.c, 8);
+    K.sphere(F, r * 1.25, 'metal', P.titan, 8, 5);
+    return { T, F };
+  }
+  // engine exhaust: the same thin, wide vacuum plume and nozzle glow as Eagle 2's, one per bell (bells: {p, d, r, len, w})
+  function plumeMat(c, a) {
+    return new THREE.ShaderMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.CustomBlending,
+      blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+      uniforms: { uK: { value: 0 }, uT: { value: 0 }, uC: { value: new THREE.Color(c) }, uA: { value: a } },
+      vertexShader: 'varying vec2 vUv; varying vec3 vN, vV; void main(){ vUv = uv; vN = normalize(normalMatrix * normal); vec4 p = modelViewMatrix * vec4(position, 1.0); vV = normalize(-p.xyz); p.y -= ' + SHEAR_K.toFixed(3) + ' * max(p.z + cameraPosition.z, 0.0); gl_Position = projectionMatrix * p; }',
+      fragmentShader: 'uniform float uK, uT, uA; uniform vec3 uC; varying vec2 vUv; varying vec3 vN, vV; void main(){ float v = 1.0 - vUv.y; float f = abs(dot(vN, vV));' +
+        ' float a = pow(max(1.0 - v, 0.0), 2.2) * (0.35 + 0.65 * f) * uK * uA * (0.9 + 0.1 * sin(uT * 60.0 + v * 20.0)); gl_FragColor = vec4(uC * a, 0.0); }' });
+  }
+  let DOWN = null, UPV = null, LV = null;   // (made on the first lander swap: THREE loads with the 3D view)
+  function mkFx(bells) {   // the plumes and glow discs of one model's bells, in the model's own frame
+    const g = new THREE.Group(); g.userData.pl = [];
+    for (const b of bells) {
+      const s = b.r / 0.98, q = new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(...b.d).normalize());
+      const pl = new THREE.Group(); pl.position.set(...b.p); pl.quaternion.copy(q); pl.scale.set(s, 1, s);
+      const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 5.5, 1, 32, 1, true), plumeMat(0x9fb8ff, 0.16)); outer.position.y = -0.5;
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.25, 1, 24, 1, true), plumeMat(0xe8f0ff, 0.55)); core.position.y = -0.5;
+      const og = new THREE.Group(); og.add(outer); const cg = new THREE.Group(); cg.add(core); pl.add(og, cg); pl.visible = false;
+      const glow = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.86, 0.04, 32, 1), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+      glow.position.set(...b.p).addScaledVector(new THREE.Vector3(...b.d).normalize(), -0.1); glow.quaternion.copy(q); glow.scale.set(s, 1, s); glow.visible = !b.side;
+      g.add(pl, glow); g.userData.pl.push({ b, pl, og, cg, glow, mats: [outer.material, core.material], k: 0 });
+    }
+    return g;
+  }
+  // a thin rod between two points (cables, harpoon lines, the dampers on moving legs): a unit cylinder stretched each frame
+  const linkGeo = () => { const g = new THREE.CylinderGeometry(1, 1, 1, 6, 1, true); g.translate(0, 0.5, 0); return g; };
+  function setLink(m, a, b, r) { const d = LV[0].subVectors(b, a), l = d.length(); if (l < 1e-4) { m.visible = false; return; } m.visible = true; m.position.copy(a); m.quaternion.setFromUnitVectors(UPV, d.multiplyScalar(1 / l)); m.scale.set(r, l, r); }
+  // a part built along +y from its own origin, then pointed along a direction
+  const pointAlong = (o, d) => o.quaternion.setFromUnitVectors(UPV, LV[1].set(d[0], d[1], d[2]).normalize());
+
+  // ---------- 1953: each lander's painted-rocket stand-in (mid-century space-painting style, like Eagle 2's), standing on the same feet ----------
+  function mk53() {
+    const g = new THREE.Group(), base = new THREE.Group(); base.position.y = LFOOT; g.add(base);
+    const mat = (hex, o) => new THREE.MeshStandardMaterial(Object.assign({ color: hex, metalness: 0.1, roughness: 0.45 }, o || {}));
+    const finMat = (hex, em) => { const m = new THREE.MeshStandardMaterial({ color: hex, metalness: 0.05, roughness: 0.6, emissive: em });
+      m.onBeforeCompile = sh => { sh.fragmentShader = sh.fragmentShader.replace('#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n#if NUM_DIR_LIGHTS > 0\n { vec3 L5 = directionalLights[0].direction; float d5 = dot(normal, L5); if (d5 < 0.0) normal = normalize(normal - 2.0 * d5 * L5); normal = normalize(normal + 0.6 * L5); }\n#endif'); }; return m; };
+    const M = { alu: mat(0xd2d6db, { metalness: 0.38, roughness: 0.3 }), cream: mat(0xf2e3c2), dark: mat(0x24262c, { metalness: 0.75, roughness: 0.4, side: THREE.DoubleSide }),
+      glass: mat(0x1d4a5a, { metalness: 0.85, roughness: 0.06, emissive: 0x123844 }), rim: mat(0xf3dfbf) };
+    const add = (geo, m, pos, f, par) => { const ms = new THREE.Mesh(geo, m); if (pos) ms.position.set(...pos); if (f) f(ms); ms.castShadow = true; ms.receiveShadow = true; (par || base).add(ms); return ms; };
+    // a smooth body of revolution through the profile points [h, r] from y0 up; h0..h1 cuts out a painted band (drawn a hair proud)
+    const body = (y0, prof, m, h0, h1, k, par) => { const cv = new THREE.CatmullRomCurve3(prof.map(([h, r]) => new THREE.Vector3(r, h, 0)), false, 'centripetal'), pr = [];
+      for (let i = 0; i <= 72; i++) { const p = cv.getPoint(i / 72); if (h0 != null && (p.y < h0 || p.y > h1)) continue; pr.push(new THREE.Vector2(Math.max(0.001, p.x * (k || 1)), y0 + p.y)); }
+      return add(new THREE.LatheGeometry(pr, 40), m, null, null, par); };
+    const band = (y0, prof, m, h0, h1) => body(y0, prof, m, h0, h1, 1.012);
+    const fin = (a, pts, th, m) => { const sh = new THREE.Shape(pts.map(([r, y]) => new THREE.Vector2(r, y)));
+      const fg = new THREE.ExtrudeGeometry(sh, { depth: th, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 1, curveSegments: 1 }); fg.translate(0, 0, -th / 2);
+      const ms = add(fg, m, null, o => { o.rotation.y = -a * DEG; }); ms.receiveShadow = false; return ms; };
+    const pad = (a, R, r0, r1) => add(new THREE.CylinderGeometry(r0, r1, 0.24, 20), M.alu, atA(a, R, 0.12));
+    const bell = (x, z, y0, y1, rt, rb, par) => { const pr = []; for (let i = 0; i <= 12; i++) { const k = i / 12; pr.push(new THREE.Vector2(rt + (rb - rt) * Math.pow(k, 1.3), y0 + (y1 - y0) * k)); } return add(new THREE.LatheGeometry(pr, 32), M.dark, [x, 0, z], null, par); };
+    const porthole = (p, n, r) => { const d = new THREE.Vector3(...n).normalize();
+      add(new THREE.CylinderGeometry(r, r, 0.1, 20), M.glass, p, m => m.quaternion.setFromUnitVectors(UPV, d));
+      add(new THREE.TorusGeometry(r + 0.02, 0.06, 8, 24), M.rim, [p[0] + d.x * 0.03, p[1] + d.y * 0.03, p[2] + d.z * 0.03], m => m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d)); };
+    // fins stretched (outward of the root r0) so the foot at radius rf lands where the lander's own foot is (radius R)
+    const fitR = (pts, r0, rf, R, dy) => pts.map(([r, y]) => [r <= r0 ? r : r0 + (r - r0) * (R - r0) / (rf - r0), y > 0.5 ? y + (dy || 0) : y]);
+    return { g, base, M, mat, finMat, add, body, band, fin, pad, bell, porthole, fitR };
+  }
+
+  // ---------- Dowser: one-seat survey scout. Small white faceted pod on an open silver truss, tripod legs with teal braces, three
+  // spherical tanks, and a tall lidar mast with a dark sensor ball whose scanner sweeps (L.lidar) ----------
+  function buildDowser(crk) {
+    const P = landerPal(), M = landerMats(crk), K = mkKit(P, [0, LFOOT, 0]), { lp, frustum, strut, sphere, bell, box, loft, prism } = K;
+    // deck plate and the open truss under it (a hexagonal ring of tubes, posts and diagonals down to the engine's thrust ring)
+    prism(ngon(6, 1.05, 0), 1.34, 1.42, 'metal', P.silver);
+    const v6 = ngon(6, 1.0, 0), v6b = ngon(6, 0.92, 30);
+    for (let i = 0; i < 6; i++) { const a = v6[i], b = v6[(i + 1) % 6], c = v6b[i];
+      strut([a[0], 1.36, a[1]], [c[0], 1.16, c[1]], 0.026, 'metal', P.silver, 6); strut([b[0], 1.36, b[1]], [c[0], 1.16, c[1]], 0.026, 'metal', P.silver, 6);
+      const d = v6b[(i + 1) % 6]; strut([c[0], 1.16, c[1]], [d[0], 1.16, d[1]], 0.03, 'metal', P.silver, 6); strut([c[0], 1.16, c[1]], [c[0] * 0.34, 1.26, c[1] * 0.34], 0.024, 'metal', P.titan, 6); }
+    frustum([0, 1.34, 0], [0, 1.22, 0], 0.34, 0.34, 'metal', P.titan, 14);
+    // three spherical tanks round the deck, each on a collar
+    for (const a of [90, 210, 330]) { const c = atA(a, 0.95, 1.85); sphere(c, 0.42, 'paint', P.white, 16, 10);
+      frustum([c[0], 1.82, c[2]], [c[0], 1.88, c[2]], 0.43, 0.43, 'metal', P.titan, 16); strut(atA(a, 0.95, 1.4), atA(a, 0.95, 1.5), 0.08, 'metal', P.titan, 8); }
+    // engine: foil-wrapped chamber, gimbal ring, bell (exit y = 0.55, radius 0.46)
+    frustum([0, 1.24, 0], [0, 1.08, 0], 0.24, 0.24, 'foil', P.gold, 14); frustum([0, 1.1, 0], [0, 1.04, 0], 0.28, 0.28, 'dark', P.dark, 14);
+    bell([0, 1.06, 0], [0, 0.55, 0], 0.19, 0.46, 22);
+    // tripod legs, chrome struts with teal V-braces; pads at radius 3.4 (x = +-2.94 on the flight line, one behind at x = 0)
+    for (const a of [30, 150, 270]) { const T = atA(a, 0.95, 1.35), F = atA(a, 3.4, 0.3), pb = [F[0], 0, F[2]], up = h => [pb[0], h, pb[2]];
+      strut(T, F, 0.05, 'metal', P.chrome, 8); sphere(T, 0.07, 'metal', P.titan, 8, 5);
+      for (const sg of [-1, 1]) strut(atA(a + sg * 24, 0.86, 1.2), lp(T, F, 0.55), 0.03, 'paint', P.teal, 6);
+      frustum(lp(T, F, 0.53), lp(T, F, 0.57), 0.065, 0.065, 'metal', P.titan, 8);
+      frustum(pb, up(0.06), 0.3, 0.36, 'paint', P.padM, 16, { caps: [['paint', P.padM], false] }); frustum(up(0.06), up(0.16), 0.36, 0.09, 'paint', P.padM, 16, { caps: false });
+      strut(up(0.12), F, 0.045, 'metal', P.chrome, 8); sphere(F, 0.06, 'metal', P.titan, 8, 5); }
+    // the pod: hexagonal, faceted, windows on the front-left, teal waist stripe and a teal cap on the back
+    const hx = ngon(6, 0.95, 90);
+    const dec = [[2, 0, q4(0.06, 0.15, 0.94, 0.9), 'glass', P.glass], [2, 1, q4(0.06, 0.15, 0.94, 0.9), 'glass', P.glass],
+      [1, 0, q4(0.1, 0.62, 0.9, 0.95), 'glass', P.glass], [1, 1, q4(0.1, 0.62, 0.9, 0.95), 'glass', P.glass], [2, 5, q4(0.62, 0.3, 0.9, 0.78), 'paint', P.grey]];
+    for (let s = 0; s < 6; s++) dec.push([1, s, q4(0, 0.08, 1, 0.2), 'paint', P.teal]);
+    loft([ringP(hx, 1.42, 0.85), ringP(hx, 1.65), ringP(hx, 2.55), ringP(hx, 3.05, 0.62, 0, -0.1), ringP(hx, 3.15, 0.45, 0, -0.12)], 'paint', P.white,
+      { decals: dec, band: (b, s) => b === 3 && s >= 3 ? ['paint', P.teal] : b === 3 ? ['paint', P.grey] : null });
+    // lidar mast: chrome mast, teal collar, dark sensor ball (the scanner head turns on it)
+    strut([0, 3.1, -0.15], [0, 4.32, -0.15], 0.035, 'metal', P.chrome, 8); frustum([0, 4.25, -0.15], [0, 4.3, -0.15], 0.26, 0.26, 'paint', P.teal, 18);
+    sphere([0, 4.45, -0.15], 0.16, 'glass', P.glass, 14, 8);
+    strut([-0.3, 3.15, -0.35], [-0.42, 3.85, -0.45], 0.012, 'metal', P.titan, 5);   // whip antenna
+    // small RCS blocks on the pod's flanks: up, down and outward nozzles, nav lights on their front faces
+    for (const sx of [-1, 1]) { const c = [sx * 0.98, 2.3, 0]; box(c, [0.16, 0.24, 0.2], 'paint', P.teal);
+      frustum([c[0] + sx * 0.08, 2.3, 0], [c[0] + sx * 0.2, 2.3, 0], 0.03, 0.06, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] });
+      for (const d of [1, -1]) frustum([c[0], 2.3 + d * 0.12, 0], [c[0], 2.3 + d * 0.24, 0], 0.025, 0.05, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] });
+      sphere([c[0], 2.36, 0.11], 0.03, 'lamp', sx < 0 ? P.red : P.green, 6, 4); }
+    // floodlights under the pod's front
+    for (const sx of [-1, 1]) frustum([sx * 0.32, 1.47, 0.62], [sx * 0.32, 1.47, 0.76], 0.07, 0.08, 'paint', P.dark, 10, { caps: [false, ['lamp', P.lamp]] });
+    const g = K.finish(M, 'dowser');
+    // the scanner head: a dark visor on the ball with a cyan emitter, and a faint fan of light along where it looks
+    const HK = mkKit(P); HK.box([0.14, 0, 0], [0.07, 0.1, 0.16], 'paint', P.graphite); HK.box([0.02, 0.07, 0], [0.26, 0.03, 0.06], 'paint', P.teal);
+    const head = HK.finish(M, 'dowser_head'); head.position.set(0, 4.45 + LFOOT, -0.15); g.add(head);
+    const em = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.035), new THREE.MeshBasicMaterial({ color: 0x0c1c20 })); em.position.set(0.181, 0, 0); em.rotation.y = Math.PI / 2; head.add(em);
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.55, 1, 20, 1, true), plumeMat(0x7ff0ff, 0.12)); beam.geometry.translate(0, -0.5, 0);
+    const bg = new THREE.Group(); bg.position.set(0.19, 0, 0); bg.rotation.z = Math.PI / 2 - 0.42; bg.scale.set(1, 2.6, 1); bg.add(beam); head.add(bg); bg.visible = false;
+    // 1953: slim cream needle rocket, three swept teal fins, a single porthole, a red ball at the tip that pulses with the scan
+    const R = mk53(), pm = R.M, teal = R.finMat(0x2b6b73, 0x0c2226), red = R.mat(0xc74529, { emissive: 0x000000 });
+    const prof = [[0, 0], [0.15, 0.6], [0.8, 0.85], [4.5, 0.85], [6.2, 0.45], [7.6, 0.06], [7.7, 0]];
+    R.body(1.15, prof, pm.cream); R.band(1.15, prof, teal, 4.6, 6.15);
+    const finP = R.fitR([[0.7, 3.2], [1.0, 2.4], [2.9, 0.2], [2.6, 0.12], [0.8, 1.2]], 0.7, 2.75, 3.4, 0.25);
+    for (const a of [90, 210, 330]) { R.fin(a, finP, 0.1, teal); R.pad(a, 3.4, 0.2, 0.3); }
+    R.bell(0, 0, 1.2, 0.55, 0.32, 0.55); R.porthole([0, 5.25, 0.86], [0, 0, 1], 0.3);
+    R.add(new THREE.CylinderGeometry(0.02, 0.05, 1.25, 8), pm.alu, [0, 9.45, 0]); const tip = R.add(new THREE.SphereGeometry(0.14, 12, 8), red, [0, 10.1, 0]);
+    return { id: 'dowser', g, g53: R.g, h: 4.6, tris: g.userData.tris,
+      bells: [{ p: [0, 0.55 + LFOOT, 0], d: [0, -1, 0], r: 0.46 }], bells53: [{ p: [0, 0.55 + LFOOT, 0], d: [0, -1, 0], r: 0.55 }],
+      spot: [0, 1.4 + LFOOT, 0.9], thr: [0, 0.55 + LFOOT - 2.45, 0],
+      anim(c) { const lid = c.L.lidar, live = lid != null && !c.dead;
+        head.rotation.y = lid == null ? 0 : -lid * TAU;
+        const pu = live ? 0.75 + 0.25 * Math.sin(c.t * 9) : 0;
+        em.material.color.setRGB(live ? 0.45 + 0.4 * pu : 0.05, live ? 0.9 * pu + 0.1 : 0.11, live ? 1.0 : 0.13);
+        bg.visible = live && !c.p53; beam.material.uniforms.uK.value = live ? 0.55 * pu : 0; beam.material.uniforms.uT.value = c.t;
+        red.emissive.setRGB(live ? 0.9 * pu : 0, live ? 0.18 * pu : 0, live ? 0.08 * pu : 0); } };
+  }
+
+  // ---------- Bullwheel: heavy hauler. Broad charcoal hexagonal stage with hazard chevrons, six heavy legs, three bells, two cream
+  // strap-on drop tanks with orange bands (they separate and tumble away: L.tanksDropped, L.tankDropT), a cabin front-left, a big yellow reel ----------
+  function buildBullwheel(crk) {
+    const P = landerPal(), M = landerMats(crk), K = mkKit(P, [0, LFOOT, 0]), { lp, frustum, strut, sphere, bell, box, loft, lathe, roty } = K;
+    const hexp = ngon(6, 2.95, 0), dec = [];
+    for (let s = 0; s < 6; s++) for (let k = 0; k < 6; k++) { const u = 0.04 + k * 0.155; dec.push([1, s, [[u, 0.04], [u + 0.07, 0.04], [u + 0.14, 0.2], [u + 0.07, 0.2]], 'paint', P.yellow]); }
+    for (let s = 0; s < 6; s++) dec.push([1, s, q4(0, 0.9, 1, 0.94), 'paint', P.yelD]);
+    loft([ringP(hexp, 1.95, 0.86), ringP(hexp, 2.15), ringP(hexp, 4.0), ringP(hexp, 4.15, 0.94)], 'paint', P.char,
+      { cap: ['paint', P.deck], band: (b, s) => b === 0 ? ['foil', P.gold] : b !== 1 ? ['paint', P.black] : (s % 2 ? ['paint', P.char] : ['paint', P.graphite]), decals: dec });
+    // three engines under the stage (exits y = 0.75, radius 0.62)
+    for (const a of [90, 210, 330]) { const p = atA(a, 1.05, 0);
+      frustum([p[0], 1.95, p[2]], [p[0], 1.72, p[2]], 0.36, 0.36, 'foil', P.gold, 16); frustum([p[0], 1.74, p[2]], [p[0], 1.66, p[2]], 0.4, 0.4, 'dark', P.dark, 16);
+      bell([p[0], 1.68, p[2]], [p[0], 0.75, p[2]], 0.28, 0.62, 24); }
+    frustum([0, 1.95, 0], [0, 1.75, 0], 0.7, 0.7, 'metal', P.titan, 16);
+    // six heavy legs with yellow sleeves; pads at radius 5.55 (x = +-4.81, and x = 0 front and back)
+    for (const a of [30, 90, 150, 210, 270, 330]) legC(K, P, a, [2.6, 3.75], [5.55, 0.55], [2.85, 2.05, 14], { r: 0.13, c: P.silver, secC: P.titan, sleeve: [0.45, 0.2, P.yellow], padR: 0.78, padC: P.char, rim: P.yellow, secT: 0.5 });
+    // the tanks' mounting arms stay on the stage when the tanks go
+    for (const sx of [-1, 1]) { strut([sx * 3.1, 2.85, 0], [sx * 2.6, 2.6, 0], 0.07, 'metal', P.titan, 8); strut([sx * 3.1, 4.45, 0], [sx * 2.6, 3.7, 0], 0.07, 'metal', P.titan, 8);
+      for (const y of [2.85, 4.45]) box([sx * 3.08, y, 0], [0.12, 0.16, 0.22], 'paint', P.dark); }
+    // cabin, front-left: off-white, graphite window band, yellow stripe
+    const cp = crect(1.15, 1.05, 0.35, 0.55), wd = (s, i) => [1, s, q4(i, 0.5, 1 - i, 0.9), 'glass', P.glass];
+    const cdec = [[1, 7, q4(0.06, 0.5, 0.48, 0.9), 'glass', P.glass], [1, 7, q4(0.52, 0.5, 0.94, 0.9), 'glass', P.glass], wd(0, 0.15), wd(6, 0.15)];
+    for (let s = 0; s < 8; s++) cdec.push([0, s, q4(0, 0.1, 1, 0.22), 'paint', P.yellow]);
+    loft([ringP(cp, 4.15, 1, -1.2, 0.6), ringP(cp, 5.25, 1, -1.2, 0.6), ringP(cp, 5.75, 0.8, -1.2, 0.5)], 'paint', P.offwhite, { decals: cdec, band: b => b === 1 ? ['paint', P.grey] : null });
+    // the bullwheel tether reel
+    for (const z of [-0.7, 0.7]) box([1.3, 4.7, z], [0.9, 1.1, 0.14], 'paint', P.char);
+    frustum([1.3, 5.2, -0.62], [1.3, 5.2, 0.62], 1.0, 1.0, 'paint', P.yellow, 26);
+    for (const z of [-0.66, 0.66]) frustum([1.3, 5.2, z - 0.05], [1.3, 5.2, z + 0.05], 1.12, 1.12, 'paint', P.yelD, 26);
+    frustum([1.3, 5.2, 0.7], [1.3, 5.2, 0.86], 0.25, 0.25, 'metal', P.titan, 12); frustum([1.3, 5.2, 0.86], [1.3, 5.2, 0.92], 0.12, 0.12, 'dark', P.dark, 10);
+    // stowed mast along the back, RCS quads on the top deck corners, lamps on the front faces and floodlights underneath
+    strut([-2.2, 4.4, -1.6], [2.2, 4.4, -1.6], 0.18, 'paint', P.offwhite, 12); for (const sx of [-1, 1]) box([sx * 2.0, 4.3, -1.6], [0.3, 0.35, 0.5], 'paint', P.char);
+    for (const a of [60, 120, 240, 300]) { const c = atA(a, 2.9, 3.85), Rq = roty(-a); box(c, [0.34, 0.42, 0.36], 'paint', P.orange, Rq);
+      for (const d of [1, -1]) frustum([c[0], 3.85 + d * 0.21, c[2]], [c[0], 3.85 + d * 0.45, c[2]], 0.04, 0.09, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] }); }
+    for (const a of [30, 90, 150]) { const c = atA(a, 2.57, 3.62); box(c, [0.42, 0.14, 0.06], 'lamp', P.lamp, roty(90 - a)); }
+    sphere(atA(150, 2.6, 4.05), 0.06, 'lamp', P.red, 8, 5); sphere(atA(30, 2.6, 4.05), 0.06, 'lamp', P.green, 8, 5);
+    for (const sx of [-1, 1]) frustum([sx * 1.05, 1.95, 1.62], [sx * 1.05, 1.85, 1.62], 0.14, 0.16, 'paint', P.dark, 12, { caps: [['lamp', P.lamp], false] });
+    const g = K.finish(M, 'bullwheel');
+    // the drop tanks: own groups centred on the tank (so they tumble about their middle) and own materials (a wreck's soot stays on the stage)
+    const TM = landerMats(crk), tanks = [];
+    for (const sx of [-1, 1]) { const c = [sx * 3.75, 3.6, 0], TK = mkKit(P, [-c[0], -c[1], 0]), b = [c[0], 2.15, 0];
+      TK.lathe(b, [0, 1, 0], [[0, 0], [0.15, 0.45], [0.45, 0.72], [2.45, 0.72], [2.75, 0.45], [2.9, 0]], 'paint', P.offwhite, 22);
+      TK.frustum([c[0], 3.3, 0], [c[0], 3.5, 0], 0.735, 0.735, 'paint', P.orange, 22); TK.frustum([c[0], 4.15, 0], [c[0], 4.23, 0], 0.735, 0.735, 'paint', P.orange, 22);
+      TK.frustum([c[0], 2.2, 0], [c[0], 2.05, 0], 0.08, 0.05, 'metal', P.titan, 8);
+      for (const y of [2.85, 4.45]) TK.box([sx * 3.0, y, 0], [0.1, 0.14, 0.18], 'paint', P.dark);
+      TK.box([sx * 3.03, 3.6, 0.2], [0.06, 0.2, 0.12], 'lamp', P.red);
+      const t = TK.finish(TM, 'bullwheel_tank'); t.position.set(c[0], c[1] + LFOOT, 0); t.userData.home = t.position.clone(); t.userData.sx = sx; t.userData.r = 0.72; t.userData.par = g; g.add(t); tanks.push(t); g.userData.tris += t.userData.tris; }
+    const world = new THREE.Group();
+    // 1953: fat mustard rocket, black belt, four stubby fins, a row of portholes, three bells
+    const R = mk53(), pm = R.M, must = R.mat(0xe6a833), blk = R.mat(0x222226, { roughness: 0.55 }), dk = R.finMat(0x34343c, 0x0e0e12);
+    const prof = [[0, 0], [0.25, 1.6], [1.2, 2.3], [3.6, 2.4], [5.2, 1.9], [6.4, 0.9], [6.9, 0.2], [7.0, 0]];
+    R.body(1.6, prof, must); R.band(1.6, prof, blk, 0.35, 1.15);
+    const finP = R.fitR([[2.0, 4.0], [2.4, 3.2], [4.6, 0.6], [4.8, 0.25], [4.2, 0.25], [2.2, 1.9]], 2.0, 4.5, 4.81, 0.2);
+    for (const a of [0, 90, 180, 270]) { R.fin(a, finP.map(([r, y]) => [r, Math.max(0, y)]), 0.2, dk); R.pad(a, 4.81, 0.55, 0.72); }
+    for (const a of [90, 210, 330]) { const p = atA(a, 0.8, 0); R.bell(p[0], p[2], 1.75, 0.75, 0.38, 0.7); }
+    for (const ax of [-1.5, -0.5, 0.5, 1.5]) { const z = Math.sqrt(2.4 * 2.4 - ax * ax); R.porthole([ax, 4.2, z - 0.02], [ax / 2.4, 0, z / 2.4], 0.26); }
+    R.add(new THREE.CylinderGeometry(0.25, 0.25, 0.12, 14), R.mat(0xc74529), [0, 8.62, 0]);
+    // 1953 strap-on tanks: cream cigars with a red band and a little fin, on two arms above the big fins; they let go and tumble like the modern ones
+    const tanks53 = [], tCream = R.mat(0xf2e3c2), tRed = R.mat(0xc74529);
+    for (const sx of [-1, 1]) { const tg = new THREE.Group(), pr = [];
+      for (const [r, y] of [[0.001, -1.4], [0.3, -1.33], [0.5, -1.12], [0.52, 0.85], [0.42, 1.25], [0.22, 1.55], [0.001, 1.68]]) pr.push(new THREE.Vector2(r, y));
+      R.add(new THREE.LatheGeometry(pr, 24), tCream, null, null, tg); R.add(new THREE.CylinderGeometry(0.535, 0.535, 0.26, 24), tRed, [0, 0.35, 0], null, tg);
+      R.add(new THREE.CylinderGeometry(0.535, 0.535, 0.12, 24), tRed, [0, -0.75, 0], null, tg);
+      R.add(new THREE.BoxGeometry(0.45, 0.7, 0.08), tRed, [sx * 0.62, -1.0, 0], null, tg);
+      for (const y of [-0.55, 0.75]) R.add(new THREE.CylinderGeometry(0.07, 0.07, 0.55, 8), pm.alu, [-sx * 0.72, y, 0], m => { m.rotation.z = Math.PI / 2; }, tg);
+      tg.position.set(sx * 2.95, 5.55 + LFOOT, 0); tg.userData.home = tg.position.clone(); tg.userData.sx = sx; tg.userData.r = 0.52; tg.userData.p53 = true; tg.userData.par = R.g; R.g.add(tg); tanks53.push(tg); }
+    const allTanks = tanks.concat(tanks53);
+    return { id: 'bullwheel', g, g53: R.g, world, h: 6.4, tris: g.userData.tris,
+      bells: [90, 210, 330].map(a => { const p = atA(a, 1.05, 0.75 + LFOOT); return { p, d: [0, -1, 0], r: 0.62 }; }),
+      bells53: [90, 210, 330].map(a => { const p = atA(a, 0.8, 0.75 + LFOOT); return { p, d: [0, -1, 0], r: 0.7 }; }),
+      spot: [0, 1.85 + LFOOT, 1.7], thr: [0, 0.75 + LFOOT - 2.45, 0],
+      reset() { for (const t of allTanks) { if (t.parent !== t.userData.par) t.userData.par.add(t); t.position.copy(t.userData.home); t.rotation.set(0, 0, 0); t.scale.setScalar(1); t.visible = true; t.userData.st = null; } },
+      anim(c) { const L = c.L, drop = !!L.tanksDropped;
+        if (!drop) { this._dt = 0; if (tanks[0].userData.st || tanks53[0].userData.st) this.reset(); return; }
+        const tt = L.tankDropT != null ? L.tankDropT : (this._dt = (this._dt || 0) + c.dt);
+        for (const t of allTanks) { let st = t.userData.st;
+          if (!st || tt < st.t0 - 0.01) {   // the moment they go: from where they are, with the lander's speed and a push outward
+            if (c.dead) continue;
+            const [gx, gy] = c.toGame([t.userData.home.x, t.userData.home.y]), sx = t.userData.sx, co = Math.cos(L.a || 0), si = Math.sin(L.a || 0), push = 2.2;
+            st = t.userData.st = { t0: tt, x: gx, y: gy, vx: (L.vx || 0) + sx * push * co, vy: (L.vy || 0) - sx * push * si + 0.4, a0: -(L.a || 0), w: -sx * (1.4 + 0.3 * sx), wx: 0.6 * sx, s: c.ms, land: null };
+            world.add(t); t.traverse(o => o.layers.set(t.userData.p53 ? 2 : 0)); R3D.burnMats = R3D.burnt ? R3D.burnMats : null; }
+          const u = tt - st.t0; let x, y, rz, rx;
+          if (st.land) { x = st.land.x; y = st.land.y; rz = st.land.rz; rx = 0; }
+          else { x = st.x + st.vx * u; y = st.y + st.vy * u - 0.5 * c.g * u * u; rz = st.a0 + st.w * u; rx = st.wx * u;
+            const tr = t.userData.r, gy = c.ground(x); if (gy != null && y - tr * st.s < gy && u > 0.05) { const rr = Math.round((rz - Math.PI / 2) / Math.PI) * Math.PI + Math.PI / 2; st.land = { x, y: gy + tr * st.s, rz: rr }; y = st.land.y; rz = rr; rx = 0; } }
+          t.position.set(c.toScene(x), y, 0); t.rotation.set(rx, 0, rz); t.scale.setScalar(st.s); t.visible = !!t.userData.p53 === !!c.p53 && u < 90; }
+      } };
+  }
+
+  // ---------- Plumbline: upright translator. Tall white-and-grey octagonal stack with blue bands, four blue thruster pods on outrigger
+  // arms with big side-facing nozzles (L.sideJet fires one side), four wide pads, a plumb-bob beacon on top (blue in SLIDE, amber in TILT) ----------
+  function buildPlumbline(crk) {
+    const P = landerPal(), M = landerMats(crk), K = mkKit(P, [0, LFOOT, 0]), { frustum, strut, sphere, bell, box, loft, roty, crs } = K;
+    const o8 = ngon(8, 1.65, 22.5), ldec = [];
+    for (let s = 0; s < 8; s++) ldec.push([2, s, q4(0, 0.3, 1, 0.42), 'paint', P.blue]);
+    loft([ringP(o8, 1.25, 0.85), ringP(o8, 1.4), ringP(o8, 2.55), ringP(o8, 2.68, 0.85)], 'paint', P.offwhite,
+      { band: (b, s) => b === 0 ? ['foil', P.gold] : b === 2 ? ['paint', P.grey] : null, decals: ldec, cap: ['paint', P.deck] });
+    frustum([0, 1.25, 0], [0, 1.02, 0], 0.4, 0.4, 'foil', P.gold, 16); frustum([0, 1.04, 0], [0, 0.97, 0], 0.46, 0.46, 'dark', P.dark, 16);
+    bell([0, 1.0, 0], [0, 0.42, 0], 0.3, 0.66, 26);
+    for (const a of [45, 135, 225, 315]) legC(K, P, a, [1.4, 2.25], [3.85, 0.38], [1.55, 1.35, 22], { r: 0.07, c: P.chrome, sleeve: [0.4, 0.11, P.blue], padR: 0.78, padC: P.padM, rim: P.blue });
+    const c8 = ngon(8, 1.32, 22.5), dec = [];
+    for (const s of [1, 2]) dec.push([2, s, q4(0.1, 0.18, 0.9, 0.82), 'glass', P.glass]);
+    for (let s = 0; s < 8; s++) dec.push([1, s, q4(0, 0.86, 1, 0.96), 'paint', P.blue], [0, s, q4(0, 0.1, 1, 0.18), 'paint', P.blue]);
+    dec.push([0, 1, q4(0.3, 0.3, 0.7, 0.8), 'paint', P.grey], [0, 1, q4(0.62, 0.52, 0.66, 0.58), 'paint', P.dark]);
+    loft([ringP(c8, 2.68), ringP(c8, 4.0), ringP(c8, 5.15), ringP(c8, 5.75, 0.72), ringP(c8, 5.9, 0.5)], 'paint', P.white, { decals: dec, band: b => b === 3 ? ['metal', P.silver] : b === 1 ? ['paint', P.white] : null });
+    // the outrigger pods, on the four axes: one big outward nozzle, two tangential, and small up/down attitude nozzles on the left and right pods
+    const side = { '-1': [], '1': [] };
+    for (const a of [0, 90, 180, 270]) { const base = atA(a, 1.25, 3.55), tip = atA(a, 2.75, 3.55), d = [Math.cos(a * DEG), 0, Math.sin(a * DEG)], t = crs(d, [0, 1, 0]);
+      strut(base, tip, 0.09, 'metal', P.titan, 10); strut(atA(a, 1.2, 2.75), tip, 0.05, 'metal', P.titan, 8);
+      box(tip, [0.55, 0.55, 0.55], 'paint', P.blue, roty(-a)); box([tip[0] + d[0] * 0.28, tip[1] + 0.16, tip[2] + d[2] * 0.28], [0.03, 0.1, 0.12].map((v, i) => i === 1 ? v : 0.18), 'paint', P.white, roty(-a));
+      const ex = (p, dd, r, l) => { frustum(p.map((v, i) => v + dd[i] * 0.27), p.map((v, i) => v + dd[i] * l), r * 0.36, r, 'dark', P.bell, 12, { caps: [false, ['dark', P.dark]] }); return { p: p.map((v, i) => v + dd[i] * l + (i === 1 ? LFOOT : 0)), d: dd, r: r * 0.92, side: true }; };
+      const big = ex(tip, d, 0.2, 0.75); if (Math.abs(d[0]) > 0.5) side[d[0] < 0 ? '-1' : '1'].push(Object.assign(big, { len: 0.45, w: 1 }));
+      for (const sg of [-1, 1]) { const dd = t.map(v => v * sg), e = ex(tip, dd, 0.14, 0.6); if (Math.abs(dd[0]) > 0.5) side[dd[0] < 0 ? '-1' : '1'].push(Object.assign(e, { len: 0.3, w: 0.6 })); }
+      if (Math.abs(d[0]) > 0.5) for (const dy of [1, -1]) frustum([tip[0], 3.55 + dy * 0.27, tip[2]], [tip[0], 3.55 + dy * 0.46, tip[2]], 0.035, 0.08, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] }); }
+    frustum([0, 5.85, 0], [0, 6.1, 0], 0.4, 0.4, 'metal', P.titan, 14); strut([0, 6.1, 0], [0, 6.85, 0], 0.03, 'metal', P.chrome, 6);
+    frustum([0, 6.95, 0], [0, 7.25, 0], 0.0, 0.12, 'paint', P.blue, 8); frustum([0, 6.95, 0], [0, 6.8, 0], 0.0, 0.12, 'paint', P.blue, 8);
+    for (const x of [-0.6, 0.6]) box([x, 2.45, 1.55], [0.3, 0.1, 0.08], 'lamp', P.lamp);
+    sphere([-1.4, 5.0, 0.6], 0.05, 'lamp', P.red, 8, 5); sphere([1.4, 5.0, 0.6], 0.05, 'lamp', P.green, 8, 5);
+    const g = K.finish(M, 'plumbline');
+    const bob = new THREE.Mesh(new THREE.SphereGeometry(0.075, 12, 8), new THREE.MeshBasicMaterial({ color: 0x3a6dff })); bob.position.set(0, 6.95 + LFOOT, 0); g.add(bob);
+    const sideFx = mkFx(side['-1'].concat(side['1'])); g.add(sideFx);
+    // 1953: cream rocket, navy fins, two red outrigger rocket pods pointing sideways
+    const R = mk53(), pm = R.M, navy = R.finMat(0x293861, 0x0a1022), navyB = R.mat(0x293861), red = R.mat(0xc74529);
+    const prof = [[0, 0], [0.2, 0.9], [0.9, 1.2], [5.0, 1.2], [6.6, 0.7], [7.8, 0.1], [7.9, 0]];
+    R.body(1.17, prof, pm.cream); R.band(1.17, prof, navyB, 6.45, 7.95);
+    const finP = R.fitR([[1.0, 3.6], [1.3, 2.8], [3.0, 0.35], [2.6, 0.25], [1.2, 1.4]], 1.0, 2.8, 2.72, 0.17);
+    for (const a of [0, 180, 90]) { R.fin(a, finP.map(([r, y]) => [r, y < 0.4 ? y - 0.2 : y]), 0.14, navy); R.pad(a, 2.72, 0.5, 0.6); }
+    R.bell(0, 0, 1.22, 0.42, 0.45, 0.8);
+    const side53 = { '-1': [], '1': [] };
+    for (const a of [0, 180]) { const d = a === 0 ? 1 : -1, p = atA(a, 2.55, 4.47);
+      R.add(new THREE.CylinderGeometry(0.1, 0.1, 1.15, 10), pm.alu, atA(a, 1.72, 5.17), m => { m.rotation.z = Math.PI / 2; });
+      const pp = [[0, 0], [0.1, 0.32], [1.2, 0.32], [1.6, 0]].map(([h, r]) => new THREE.Vector2(Math.max(0.001, r), h)); R.add(new THREE.LatheGeometry(pp, 18), red, p);
+      R.add(new THREE.CylinderGeometry(0.22, 0.08, 0.5, 14, 1, true), pm.dark, [p[0] + d * 0.5, p[1] + 0.6, 0], m => { m.rotation.z = d * Math.PI / 2; });
+      side53[String(d)].push({ p: [p[0] + d * 0.75, p[1] + 0.6 + LFOOT, 0], d: [d, 0, 0], r: 0.22, side: true, len: 0.5, w: 1 }); }
+    R.porthole([0, 5.77, 1.21], [0, 0, 1], 0.36);
+    R.add(new THREE.CylinderGeometry(0.03, 0.04, 0.5, 6), pm.alu, [0, 9.32, 0]);
+    R.add(new THREE.ConeGeometry(0.18, 0.35, 10), navyB, [0, 9.75, 0]); R.add(new THREE.ConeGeometry(0.18, 0.12, 10), navyB, [0, 9.51, 0], m => { m.rotation.x = Math.PI; });
+    const sideFx53 = mkFx(side53['-1'].concat(side53['1'])); R.g.add(sideFx53);
+    return { id: 'plumbline', g, g53: R.g, h: 7.3, tris: g.userData.tris,
+      bells: [{ p: [0, 0.42 + LFOOT, 0], d: [0, -1, 0], r: 0.66 }], bells53: [{ p: [0, 0.42 + LFOOT, 0], d: [0, -1, 0], r: 0.8 }],
+      spot: [0, 2.3 + LFOOT, 2.4], thr: [0, 0.42 + LFOOT - 2.45, 0], sideFx, sideFx53,
+      anim(c) { const L = c.L, sj = !c.dead && L.state === 'fly' && (L.fuel == null || L.fuel > 0) ? (L.sideJet || 0) : 0;
+        const fx = c.p53 ? sideFx53 : sideFx, fl = c.fl;
+        for (const q of fx.userData.pl) { const want = q.b.d[0] * sj > 0.5 ? 1 : 0; q.k = lerp(q.k, want, clamp(c.dt * 22, 0, 1));
+          q.pl.visible = q.k > 0.02; q.og.scale.y = (1.4 + 3.2 * q.k) * q.b.len; q.cg.scale.y = (0.9 + 1.6 * q.k) * q.b.len;
+          for (const m of q.mats) { m.uniforms.uK.value = q.k * fl * q.b.w; m.uniforms.uT.value = c.t; } }
+        bob.material.color.setHex(c.dead ? 0x0a0a0c : L.slideMode === false ? 0xffb347 : 0x3a6dff); } };
+  }
+
+  // ---------- Highline: uncrewed hover-hoist. Dark square frame, four white-and-coral engine pods canted outward, central winch housing,
+  // and an orange wellhead pod on a thin cable with three spiked feet (L.pod: lowered and swinging). Stands on four short legs ----------
+  function buildHighline(crk) {
+    const P = landerPal(), M = landerMats(crk), Y = 2.3, K = mkKit(P, [0, LFOOT, 0]), { lp, frustum, strut, sphere, bell, box, loft, lathe, prism, roty, rotz, rotx, mm3 } = K;
+    const corners = [45, 135, 225, 315].map(a => atA(a, 2.7, Y));
+    for (let i = 0; i < 4; i++) { const a = corners[i], b = corners[(i + 1) % 4], m = lp(a, b, 0.5), ang = Math.atan2(b[2] - a[2], b[0] - a[0]) / DEG;
+      box(m, [Math.hypot(b[0] - a[0], b[2] - a[2]) + 0.28, 0.28, 0.28], 'paint', P.graphite, roty(-ang)); box([m[0], Y + 0.145, m[2]], [2.4, 0.012, 0.12], 'paint', P.coral, roty(-ang)); }
+    for (const c of corners) strut([c[0] * 0.98, Y, c[2] * 0.98], [c[0] * 0.3, Y, c[2] * 0.3], 0.09, 'paint', P.graphite, 8);
+    // engine pods canted outward (bell exits at y = Y - 0.98, 0.18 m further out)
+    for (const a of [45, 135, 225, 315]) { const c = atA(a, 2.7, Y), out = [Math.cos(a * DEG), 0, Math.sin(a * DEG)], top = [c[0], Y - 0.15, c[2]];
+      lathe(top, [0, 1, 0], [[0, 0.38], [0.75, 0.42], [0.95, 0.3], [1.0, 0]], 'paint', P.white, 18, { band: b => b === 1 ? ['paint', P.coral] : null });
+      const ax = [out[0] * 0.22, -1, out[2] * 0.22], al = Math.hypot(...ax), bot = top.map((v, i) => v + ax[i] / al * 0.85);
+      frustum(top, top.map((v, i) => v + ax[i] / al * 0.1), 0.3, 0.3, 'foil', P.gold, 14); bell(top.map((v, i) => v + ax[i] / al * 0.06), bot, 0.24, 0.5, 22);
+      sphere([c[0] + out[0] * 0.44, Y + 0.25, c[2] + out[2] * 0.44], 0.06, 'lamp', a === 45 || a === 315 ? P.green : P.red, 8, 5); }
+    // four short legs under the beams' middles (x = +-2.6 on the flight line, x = 0 front and back), each an A-frame onto a pad
+    for (const a of [0, 90, 180, 270]) { const out = [Math.cos(a * DEG), 0, Math.sin(a * DEG)], tg = [-out[2], 0, out[0]], m = atA(a, 1.909, Y - 0.14), F = atA(a, 2.6, 0.24), pb = [F[0], 0, F[2]];
+      for (const sg of [-1, 1]) strut(m.map((v, i) => v + tg[i] * sg * 0.62), F, 0.055, 'metal', P.titan, 8);
+      strut([m[0] * 0.75, Y - 0.14, m[2] * 0.75], lp(m, F, 0.5), 0.035, 'metal', P.titan, 6);
+      sphere(F, 0.08, 'metal', P.titan, 8, 5); frustum(pb, [pb[0], 0.08, pb[2]], 0.3, 0.34, 'paint', P.char, 16, { caps: [['paint', P.char], false] }); frustum([pb[0], 0.08, pb[2]], [pb[0], 0.2, pb[2]], 0.34, 0.09, 'paint', P.char, 16, { caps: false }); }
+    // the winch housing: white octagon, coral stripe, a hood, a mast and a tilted phased-array panel; no windows (uncrewed)
+    const o8 = ngon(8, 1.0, 22.5), hd = []; for (let s = 0; s < 8; s++) hd.push([0, s, q4(0, 0.35, 1, 0.5), 'paint', P.coral]); hd.push([0, 1, q4(0.25, 0.62, 0.75, 0.85), 'paint', P.grey]);
+    loft([ringP(o8, Y - 0.45, 0.9), ringP(o8, Y - 0.3), ringP(o8, Y + 0.65), ringP(o8, Y + 1.0, 0.72)], 'paint', P.white, { decals: hd.map(d => [d[0] + 1].concat(d.slice(1))), band: b => b === 0 ? ['foil', P.gold] : null, cap: ['paint', P.grey] });
+    frustum([0, Y - 0.45, 0], [0, Y - 0.5, 0], 0.32, 0.32, 'dark', P.dark, 14);   // the cable guide, where the pod docks
+    frustum([0, Y + 1.0, 0], [0, Y + 1.25, 0], 0.08, 0.08, 'metal', P.titan, 8);
+    box([0, Y + 1.32, 0], [1.2, 0.05, 0.6], 'metal', P.panel, rotz(20));
+    for (const sx of [-1, 1]) { const c = [sx * 2.15, Y, 0]; box(c, [0.3, 0.34, 0.3], 'paint', P.coral);
+      for (const d of [1, -1]) frustum([c[0], Y + d * 0.17, 0], [c[0], Y + d * 0.35, 0], 0.035, 0.07, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] }); }
+    frustum([0, Y - 0.38, 0.92], [0, Y - 0.52, 0.92], 0.09, 0.11, 'paint', P.dark, 10, { caps: [false, ['lamp', P.lamp]] });   // floodlight for the hoist
+    const g = K.finish(M, 'highline');
+    // the wellhead pod, built round its hook (origin); body bottom 1.75 below, spiked feet to 2.75 below. The feet and the centre spike
+    // slide up into the body while it is docked under the housing
+    const PM = landerMats(crk), PK = mkKit(P), pp = ngon(6, 0.62, 0);
+    PK.loft([ringP(pp, -1.75, 0.7), ringP(pp, -1.5), ringP(pp, -0.45), ringP(pp, -0.1, 0.55)], 'paint', P.orange,
+      { band: b => b === 0 ? ['paint', P.char] : null, decals: [0, 1, 2, 3, 4, 5].map(s => [1, s, q4(0, 0.45, 1, 0.55), 'paint', P.char]).concat([[1, 1, q4(0.3, 0.62, 0.7, 0.86), 'paint', P.white]]), cap: ['paint', P.char] });
+    PK.frustum([0, -0.1, 0], [0, 0, 0], 0.18, 0.12, 'metal', P.titan, 10); PK.frustum([0, 0, -0.05], [0, 0, 0.05], 0.09, 0.09, 'metal', P.titan, 10);
+    const podLamp = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), new THREE.MeshBasicMaterial({ color: 0x000000 })); podLamp.position.set(0.3, -0.05, 0.3);
+    const pod = PK.finish(PM, 'highline_pod'); pod.add(podLamp);
+    const FK = mkKit(P);
+    for (const a of [90, 210, 330]) { const h = atA(a, 0.42, -1.55), f = atA(a, 0.75, -2.5); FK.strut(h, f, 0.04, 'metal', P.titan, 6); FK.frustum(f, atA(a, 0.75, -2.75), 0.05, 0.0, 'metal', P.titan, 6); }
+    FK.frustum([0, -1.6, 0], [0, -2.65, 0], 0.08, 0.0, 'metal', P.titan, 8);
+    const feet = FK.finish(PM, 'highline_podfeet'); pod.add(feet);
+    const DOCK = new THREE.Vector3(0, Y - 0.2 + LFOOT, 0), WINCH = [0, Y - 0.45 + LFOOT];
+    g.add(pod); pod.position.copy(DOCK); feet.position.y = 1.0; pod.userData.home = g; pod.userData.dock = DOCK;
+    const world = new THREE.Group(), cable = new THREE.Mesh(linkGeo(), new THREE.MeshStandardMaterial({ color: 0xd8d8d2, metalness: 0.6, roughness: 0.4, envMapIntensity: 0.85 })); cable.visible = false; world.add(cable);
+    // 1953: cream rocket, red fins, a winch arm lowering a mustard bell-shaped capsule
+    const R = mk53(), pm = R.M, red = R.finMat(0xc74529, 0x4a1608), redB = R.mat(0xc74529);
+    const prof = [[0, 0], [0.2, 0.8], [0.8, 1.15], [3.4, 1.15], [4.6, 0.6], [5.4, 0.08], [5.5, 0]];
+    R.body(0.9, prof, pm.cream); R.band(0.9, prof, redB, 3.5, 4.55);
+    for (const a of [0, 180, 90]) { R.fin(a, [[1.0, 3.0], [1.35, 2.2], [2.6, 0.24], [2.25, 0.18], [1.1, 1.2]], 0.14, red); R.pad(a, 2.6, 0.32, 0.42); }
+    R.bell(0, 0, 0.95, 0.3, 0.4, 0.7); R.porthole([0, 3.6, 1.16], [0, 0, 1], 0.3);
+    R.add(new THREE.CylinderGeometry(0.08, 0.08, 1.75, 10), pm.alu, [1.85, 4.45, 0], m => { m.rotation.z = -Math.atan2(1.5, 0.9); });
+    R.add(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 14), redB, [2.6, 4.9, 0], m => { m.rotation.x = Math.PI / 2; });
+    R.add(new THREE.CylinderGeometry(0.02, 0.04, 0.9, 6), pm.alu, [0, 6.85, 0]);
+    const cap = new THREE.Group(), must = R.mat(0xe6a833), DOCK53 = new THREE.Vector3(2.6, 4.62 + LFOOT, 0), WINCH53 = [2.6, 4.62 + LFOOT];
+    { const cv = new THREE.CatmullRomCurve3([[0, 0], [0.12, 0.62], [0.8, 0.68], [1.6, 0.42], [2.2, 0.12], [2.35, 0]].map(([h, r]) => new THREE.Vector3(r, h, 0)), false, 'centripetal'), pr = [];
+      for (let i = 0; i <= 40; i++) { const p = cv.getPoint(i / 40); pr.push(new THREE.Vector2(Math.max(0.001, p.x), p.y - 2.35)); }
+      R.add(new THREE.LatheGeometry(pr, 28), must, null, null, cap); R.add(new THREE.TorusGeometry(0.1, 0.03, 6, 14), pm.alu, [0, 0.02, 0], null, cap);
+      R.add(new THREE.CylinderGeometry(0.7, 0.7, 0.12, 28), R.mat(0x34343c), [0, -1.7, 0], null, cap);
+      for (const a of [90, 210, 330]) { const h = atA(a, 0.45, -2.2), f = atA(a, 0.75, -2.75), d = new THREE.Vector3(f[0] - h[0], f[1] - h[1], f[2] - h[2]);
+        R.add(new THREE.CylinderGeometry(0.04, 0.04, d.length(), 6), pm.dark, [(h[0] + f[0]) / 2, (h[1] + f[1]) / 2, (h[2] + f[2]) / 2], m => m.quaternion.setFromUnitVectors(UPV, d.normalize()), cap); } }
+    cap.position.copy(DOCK53); R.g.add(cap); cap.userData.home = R.g; cap.userData.dock = DOCK53;
+    const dockPod = pd => { if (pd.parent !== pd.userData.home) pd.userData.home.add(pd); pd.position.copy(pd.userData.dock); pd.rotation.set(0, 0, 0); pd.scale.setScalar(1); };
+    return { id: 'highline', g, g53: R.g, world, h: 4.7, tris: g.userData.tris + pod.userData.tris + feet.userData.tris,
+      bells: [45, 135, 225, 315].map(a => { const c = atA(a, 2.7, Y - 0.15 + LFOOT), out = [Math.cos(a * DEG), 0, Math.sin(a * DEG)], ax = [out[0] * 0.22, -1, out[2] * 0.22], al = Math.hypot(...ax);
+        return { p: c.map((v, i) => v + ax[i] / al * 0.85), d: ax.map(v => v / al), r: 0.5, w: 0.5 }; }),
+      bells53: [{ p: [0, 0.3 + LFOOT, 0], d: [0, -1, 0], r: 0.7 }],
+      spot: [0, Y - 0.52 + LFOOT, 0.92], thr: [0, Y - 0.98 + LFOOT - 2.45, 0],
+      reset() { dockPod(pod); dockPod(cap); cable.visible = false; feet.position.y = 1.0; },
+      anim(c) { const L = c.L, Pd = L.pod, pdm = c.p53 ? cap : pod, other = c.p53 ? pod : cap, wl = c.p53 ? WINCH53 : WINCH;
+        if (other.parent !== other.userData.home) dockPod(other);
+        const out = !!(Pd && Pd.x != null && Pd.y != null && (Pd.cable == null || Pd.cable > 0.05));
+        if (!out) { dockPod(pdm); cable.visible = false; }
+        else { if (pdm.parent !== world) { world.add(pdm); pdm.traverse(o => o.layers.set(c.p53 ? 2 : 0)); if (!R3D.burnt) R3D.burnMats = null; }
+          // the physics hangs the hook from under the frame in every look; the 1953 capsule starts on the winch arm's end and swings in under it as the cable pays out
+          let qx = Pd.x, qy = Pd.y; if (c.p53 && !Pd.landed) { const [ax, ay] = c.toGame(wl), k = sstep(0.05, 3.0, Pd.cable == null ? 9 : Pd.cable); qx = ax + wrapW(Pd.x - ax, 2400) * k; qy = ay + (Pd.y - ay) * k; }
+          pdm.position.set(c.toScene(qx), qy, 0); pdm.rotation.set(0, 0, -(Pd.a || 0)); pdm.scale.setScalar(c.dead ? 1 : c.ms);
+          if (c.dead || Pd.released) cable.visible = false; else { const [wx, wy] = c.toGame(wl); LV[0].set(c.toScene(wx), wy, 0); const a = LV[0].clone(); setLink(cable, a, new THREE.Vector3(c.toScene(qx), qy, 0), Math.max(0.025, 0.6 / c.scale)); cable.layers.set(c.p53 ? 2 : 0); } }
+        const dep = !out ? 0 : Pd.landed ? 1 : sstep(0.3, 1.6, Pd.cable == null ? 9 : Pd.cable); feet.position.y = 1.0 * (1 - dep);
+        const lit = !c.dead && out; podLamp.material.color.setRGB(lit ? (Pd.landed ? 0.2 : 1.0) : 0.02, lit ? (Pd.landed ? 1.0 : 0.62) * (Pd.landed ? 1 : (Math.sin(c.t * 7) > 0 ? 1 : 0.15)) : 0.02, lit ? 0.18 : 0.02); } };
+  }
+
+  // ---------- Holdfast: anchor lander for small rocks. Low gunmetal hull, olive faceted cockpit, four long jointed spider legs with orange
+  // knees and spike feet (L.legSpread), four harpoon launchers at the corners (L.anchored fires them into the ground), two chrome cold-gas
+  // tanks on the back, and a reel-in harpoon on a line from the belly winch (L.reel) ----------
+  function buildHoldfast(crk) {
+    const P = landerPal(), M = landerMats(crk), K = mkKit(P, [0, LFOOT, 0]), { lp, frustum, strut, sphere, bell, box, loft } = K;
+    const plan = crect(1.6, 1.45, 0.55), hdec = [];
+    for (let s = 0; s < 8; s++) hdec.push([1, s, q4(0, 0.06, 1, 0.18), 'paint', P.orange]);
+    hdec.push([1, 7, q4(0.18, 0.45, 0.32, 0.6), 'lamp', P.lamp], [1, 7, q4(0.68, 0.45, 0.82, 0.6), 'lamp', P.lamp]);
+    loft([ringP(plan, 1.55, 0.8), ringP(plan, 1.75), ringP(plan, 2.45), ringP(plan, 2.7, 0.85)], 'paint', P.gun, { decals: hdec, band: b => b === 0 ? ['foil', P.gold] : b !== 1 ? ['paint', P.graphite] : null, cap: ['paint', P.graphite] });
+    const cp = crect(0.95, 0.75, 0.3, 0.45), cdec = [];
+    for (const s of [7, 0, 6]) cdec.push([1, s, q4(0.06, 0.08, 0.94, 0.9), 'glass', P.glass]);
+    cdec.push([0, 7, q4(0.12, 0.4, 0.88, 0.9), 'glass', P.glass]);
+    loft([ringP(cp, 2.7, 1, 0, 0.45), ringP(cp, 3.05, 1, 0, 0.45), ringP(cp, 3.45, 0.7, 0, 0.3)], 'paint', P.olive, { decals: cdec });
+    for (const sx of [-1, 1]) { sphere([sx * 0.75, 3.05, -0.75], 0.38, 'metal', P.chrome, 16, 10); frustum([sx * 0.75, 2.7, -0.75], [sx * 0.75, 2.78, -0.75], 0.22, 0.22, 'metal', P.titan, 12); }
+    frustum([0, 1.55, 0], [0, 1.32, 0], 0.3, 0.3, 'foil', P.gold, 14); frustum([0, 1.34, 0], [0, 1.27, 0], 0.34, 0.34, 'dark', P.dark, 14);
+    bell([0, 1.3, 0], [0, 0.85, 0], 0.24, 0.5, 22);
+    // hip mounts for the legs and the reel winch under the front
+    for (const a of [45, 135, 225, 315]) { const h = atA(a, 1.45, 2.2); box(h, [0.34, 0.34, 0.34], 'paint', P.graphite, K.roty(-a)); }
+    frustum([-0.24, 1.45, 1.0], [0.24, 1.45, 1.0], 0.15, 0.15, 'paint', P.orange, 14); for (const sx of [-1, 1]) box([sx * 0.3, 1.5, 1.0], [0.06, 0.25, 0.3], 'paint', P.graphite);
+    frustum([0, 1.36, 1.0], [0, 1.24, 1.0], 0.05, 0.07, 'metal', P.titan, 8);
+    for (const sx of [-1, 1]) { const c = [sx * 1.68, 2.25, 0.55]; box(c, [0.16, 0.3, 0.24], 'paint', P.graphite);
+      for (const d of [1, -1]) frustum([c[0], 2.25 + d * 0.15, 0.55], [c[0], 2.25 + d * 0.32, 0.55], 0.03, 0.06, 'dark', P.bell, 8, { caps: [false, ['dark', P.dark]] });
+      sphere([c[0], 2.32, 0.68], 0.03, 'lamp', sx < 0 ? P.red : P.green, 6, 4); }
+    // harpoon launchers, angled down and out at the four corners
+    const launch = [];
+    for (const a of [0, 90, 180, 270]) { const base = a === 90 ? [0, 1.9, 1.5] : a === 270 ? [0, 1.9, -1.5] : atA(a, 1.62, 1.9), out = [Math.cos(a * DEG), 0, Math.sin(a * DEG)];
+      const tip = [base[0] + out[0] * 0.55, base[1] - 0.75, base[2] + out[2] * 0.55]; frustum(base, tip, 0.13, 0.13, 'paint', P.graphite, 12); frustum(base, lp(base, tip, -0.12), 0.16, 0.16, 'metal', P.titan, 12);
+      launch.push({ tip, d: nrm([tip[0] - base[0], tip[1] - base[1], tip[2] - base[2]]) }); }
+    const g = K.finish(M, 'holdfast');
+    // the legs: hip, knee and foot found each frame from the leg spread (0: tucked up for flight, 1 (default): the landing stance)
+    const legs = [], L1 = Math.hypot(1.85, 1.05), L2 = Math.hypot(1.7, 2.9), damper = new THREE.MeshStandardMaterial({ color: 0xd0d3d8, metalness: 0.75, roughness: 0.3, envMapIntensity: 0.85 });
+    const UK = mkKit(P); UK.frustum([0, 0, 0], [0, L1, 0], 0.16, 0.12, 'paint', P.gun, 10); UK.frustum([0, 0.25, 0], [0, 0.55, 0], 0.17, 0.17, 'paint', P.orange, 10);
+    const LK = mkKit(P); LK.frustum([0, 0, 0], [0, L2, 0], 0.11, 0.07, 'metal', P.titan, 10); LK.frustum([0, 0.15, 0], [0, 0.6, 0], 0.125, 0.125, 'metal', P.chrome, 10);
+    const NK = mkKit(P); NK.sphere([0, 0, 0], 0.2, 'paint', P.orange, 14, 8); NK.box([0, 0.32, 0], [0.22, 0.22, 0.22], 'paint', P.graphite);
+    for (const d of [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]]) NK.frustum([d[0] * 0.11, 0.32, d[2] * 0.11], [d[0] * 0.2, 0.32, d[2] * 0.2], 0.025, 0.05, 'dark', P.bell, 6, { caps: [false, ['dark', P.dark]] });
+    const FK = mkKit(P); FK.frustum([0, -0.17, 0], [0, 0.01, 0], 0.32, 0.36, 'paint', P.char, 8, { phase: 0.39 }); FK.frustum([0, -0.17, 0], [0, -0.35, 0], 0.12, 0.0, 'paint', P.orange, 8); FK.sphere([0, 0.02, 0], 0.09, 'metal', P.titan, 8, 5);
+    let lt = 0;
+    for (const a of [45, 135, 225, 315]) { const up = UK.finish(M, 'holdfast_upper'), lo = LK.finish(M, 'holdfast_lower'), kn = NK.finish(M, 'holdfast_knee'), ft = FK.finish(M, 'holdfast_foot');
+      const dm = new THREE.Mesh(linkGeo(), damper); dm.castShadow = true; g.add(up, lo, kn, ft, dm); legs.push({ a, up, lo, kn, ft, dm }); lt += up.userData.tris + lo.userData.tris + kn.userData.tris + ft.userData.tris + 12; }
+    const v3 = (a, r, y) => { const p = atA(a, r, y); return new THREE.Vector3(p[0], p[1] + LFOOT, p[2]); };
+    function pose(s) {
+      const H = [1.45, 2.2], F = [lerp(3.75, 5.0, s), lerp(1.25, 0.35, s)], dx = F[0] - H[0], dy = F[1] - H[1], d = Math.hypot(dx, dy), th = Math.atan2(dy, dx), al = Math.acos(clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1));
+      const Kn = [H[0] + L1 * Math.cos(th + al), H[1] + L1 * Math.sin(th + al)];
+      for (const lg of legs) { const h = v3(lg.a, H[0], H[1]), k = v3(lg.a, Kn[0], Kn[1]), f = v3(lg.a, F[0], F[1]);
+        lg.up.position.copy(h); pointAlong(lg.up, [k.x - h.x, k.y - h.y, k.z - h.z]); lg.lo.position.copy(k); pointAlong(lg.lo, [f.x - k.x, f.y - k.y, f.z - k.z]);
+        lg.kn.position.copy(k); lg.ft.position.copy(f); setLink(lg.dm, v3(lg.a, 1.4, 1.65), k.clone().lerp(f, 0.3), 0.05); }
+    }
+    pose(1); let lastS = 1;
+    // harpoons: the head sits in its launcher until fired, then lies along the launcher's line, buried in the ground, on its tether
+    const HK = mkKit(P); HK.frustum([0, 0, 0], [0, 0.32, 0], 0.09, 0.0, 'paint', P.orange, 10); HK.frustum([0, -0.18, 0], [0, 0, 0], 0.05, 0.05, 'metal', P.titan, 8);
+    const tether = new THREE.MeshStandardMaterial({ color: 0xe6d8b6, emissive: 0xc8742a, emissiveIntensity: 1.1, metalness: 0.2, roughness: 0.6, envMapIntensity: 0.85 }), heads = [];   // a pale, faintly glowing line: it has to read against a black sky, where most of its length is
+    for (const l of launch) { const hm = HK.finish(M, 'holdfast_harpoon'), ln = new THREE.Mesh(linkGeo(), tether); ln.visible = false; g.add(hm, ln);
+      const T = new THREE.Vector3(l.tip[0], l.tip[1] + LFOOT, l.tip[2]); hm.position.copy(T); pointAlong(hm, l.d); heads.push({ hm, ln, T, d: new THREE.Vector3(...l.d), reach: (l.tip[1] - 0.1) / -l.d[1] }); }
+    const world = new THREE.Group(), line = new THREE.Mesh(linkGeo(), tether), rhead = HK.finish(landerMats(crk), 'holdfast_reelhead'); line.visible = false; rhead.visible = false; world.add(line, rhead);
+    const REEL = [0, 1.24 + LFOOT], REELZ = 1.0;
+    // 1953: mint-green bulb rocket, four crooked red fins ending in claws, harpoon tubes
+    const R = mk53(), pm = R.M, mint = R.mat(0x8cc7ad), red = R.finMat(0xc74529, 0x4a1608), redB = R.mat(0xc74529), dkB = R.mat(0x34343c, { roughness: 0.55 });
+    const prof = [[0, 0], [0.2, 1.1], [0.8, 1.65], [2.4, 1.75], [3.8, 1.3], [5.0, 0.4], [5.3, 0]];
+    R.body(1.45, prof, mint); R.band(1.45, prof, dkB, 0.3, 0.75); R.bell(0, 0, 1.5, 0.85, 0.4, 0.62);
+    const rr = r => 1.5 + (r - 1.5) * (3.536 - 1.5) / (4.6 - 1.5), tubes53 = [];
+    for (const a of [0, 90, 180, 270]) {
+      R.fin(a, [[1.5, 3.25], [1.8, 2.75], [rr(3.6), 2.05], [rr(3.4), 1.75], [1.6, 1.85]], 0.14, red);
+      const s0 = atA(a, rr(3.4), 1.95), s1 = atA(a, rr(4.4), 0.25), d = new THREE.Vector3(s1[0] - s0[0], s1[1] - s0[1], s1[2] - s0[2]);
+      R.add(new THREE.CylinderGeometry(0.1, 0.1, d.length(), 10), pm.alu, [(s0[0] + s1[0]) / 2, (s0[1] + s1[1]) / 2, (s0[2] + s1[2]) / 2], m => m.quaternion.setFromUnitVectors(UPV, d.clone().normalize()));
+      const c0 = s1, c1 = atA(a, 3.536, 0), dc = new THREE.Vector3(c1[0] - c0[0], c1[1] - c0[1], c1[2] - c0[2]);
+      R.add(new THREE.ConeGeometry(0.13, dc.length(), 8), redB, [(c0[0] + c1[0]) / 2, (c0[1] + c1[1]) / 2, (c0[2] + c1[2]) / 2], m => m.quaternion.setFromUnitVectors(UPV, dc.clone().normalize().negate()));
+      const t0 = atA(a, 1.6, 3.45), t1 = atA(a, 2.45, 2.85), dt = new THREE.Vector3(t1[0] - t0[0], t1[1] - t0[1], t1[2] - t0[2]);
+      R.add(new THREE.CylinderGeometry(0.12, 0.12, dt.length(), 10), pm.dark, [(t0[0] + t1[0]) / 2, (t0[1] + t1[1]) / 2, (t0[2] + t1[2]) / 2], m => m.quaternion.setFromUnitVectors(UPV, dt.clone().normalize()));
+      tubes53.push({ tip: t1, d: dt.clone().normalize() }); }
+    R.porthole([0, 3.25, 1.72], [0, 0, 1], 0.4); for (const ax of [-1, 1]) R.porthole([ax, 3.25, 1.4], [ax * 0.6, 0, 0.8], 0.22);
+    const heads53 = [];
+    for (const tb of tubes53) { const hm = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.35, 10), redB), ln = new THREE.Mesh(linkGeo(), pm.dark); hm.geometry.translate(0, 0.175, 0); hm.castShadow = true; ln.visible = false; R.base.add(hm, ln);
+      const T = new THREE.Vector3(...tb.tip); hm.position.copy(T); hm.quaternion.setFromUnitVectors(UPV, tb.d); heads53.push({ hm, ln, T, d: tb.d, reach: (tb.tip[1] - 0.1) / -tb.d.y }); }
+    let aT = 0;
+    return { id: 'holdfast', g, g53: R.g, world, h: 4.6, tris: g.userData.tris + lt + heads.reduce((s, h) => s + h.hm.userData.tris, 0),
+      bells: [{ p: [0, 0.85 + LFOOT, 0], d: [0, -1, 0], r: 0.5 }], bells53: [{ p: [0, 0.85 + LFOOT, 0], d: [0, -1, 0], r: 0.62 }],
+      spot: [0, 1.6 + LFOOT, 1.5], thr: [0, 0.85 + LFOOT - 2.45, 0],
+      anim(c) { const L = c.L, s = L.legSpread == null ? 1 : clamp(L.legSpread, 0, 1);
+        if (Math.abs(s - lastS) > 1e-4) { pose(s); lastS = s; }
+        aT = L.anchored ? aT + c.dt : 0; const ext = sstep(0, 0.14, aT);
+        for (const h of (c.p53 ? heads53 : heads)) { const p = h.T.clone().addScaledVector(h.d, ext * h.reach); h.hm.position.copy(p); setLink(h.ln, h.T, p, 0.022); h.ln.visible = ext > 0.01; }
+        const rl = L.reel, on = !!(rl && rl.on && rl.x != null && !c.dead);
+        line.visible = on; rhead.visible = on;
+        if (on) { const o = c.p53 ? [tubes53[1].tip[0], tubes53[1].tip[1] + LFOOT] : REEL, [wx, wy] = c.toGame(o), a = new THREE.Vector3(c.toScene(wx), wy, (c.p53 ? tubes53[1].tip[2] : REELZ) * c.ms), b = new THREE.Vector3(c.toScene(rl.x), rl.y, 0);
+          setLink(line, a, b, Math.max(0.03, 0.9 / c.scale)); const d = b.clone().sub(a).normalize(); rhead.position.copy(b).addScaledVector(d, -0.12 * c.ms); rhead.quaternion.setFromUnitVectors(UPV, d); rhead.scale.setScalar(c.ms);
+          world.traverse(o => o.layers.set(c.p53 ? 2 : 0)); } } };
+  }
+
+/* ---------------- showroom bootstrap (mirrors R3D.setLander's build path) ---------------- */
+DOWN = new THREE.Vector3(0, -1, 0); UPV = new THREE.Vector3(0, 1, 0);
+LV = [new THREE.Vector3(), new THREE.Vector3()];
+const CRK = crinkleNormals(128);
+const LBUILD = { dowser: buildDowser, bullwheel: buildBullwheel, plumbline: buildPlumbline, highline: buildHighline, holdfast: buildHoldfast };
+function buildShowroom(id){
+  if (id === 'eagle2') return buildEagle(CRK);      // buildEagle returns the group directly
+  return LBUILD[id](CRK).g;                          // the others return { g, g53, ... } — Modern group only
+}
+
+/* ---------------- renderer / scenes ---------------- */
+const canvas=document.getElementById('gl');
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.25));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);
+renderer.autoClear=false;
+
+function glowTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const x=c.getContext('2d');
+  const gr=x.createRadialGradient(64,64,4,64,64,64);
+  gr.addColorStop(0,'rgba(255,170,80,0.55)'); gr.addColorStop(0.45,'rgba(255,150,60,0.16)');
+  gr.addColorStop(1,'rgba(255,150,60,0)');
+  x.fillStyle=gr; x.fillRect(0,0,128,128);
+  return new THREE.CanvasTexture(c);
+}
+const glowTex=glowTexture();
+
+const grid=document.getElementById('grid');
+const views=[];
+LANDERS.forEach((L,i)=>{
+  const panel=document.createElement('div');
+  panel.className='panel'; panel.dataset.id=L.id;
+  panel.innerHTML=`<div class="idx">0${i+1} / 06</div><div class="hint">Drag to spin</div>
+    <div class="nameplate"><div class="nm">${L.name}</div><div class="role">${L.role}</div></div>`;
+  grid.appendChild(panel);
+
+  const scene=new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xbdd0ff, 0x201408, 0.9));
+  const key=new THREE.DirectionalLight(0xffffff, 1.9); key.position.set(3,5,4); scene.add(key);
+  const fill=new THREE.DirectionalLight(0x8fb0ff, 0.5); fill.position.set(-3,1.5,2.5); scene.add(fill);
+  const rim=new THREE.DirectionalLight(0xff9a3c, 0.35); rim.position.set(-4,2.2,-3.5); scene.add(rim);
+
+  // the game's real model, recentred: feet on y=0, centred on x/z
+  const model=buildShowroom(L.id);
+  const box=new THREE.Box3().setFromObject(model);
+  const size=box.getSize(new THREE.Vector3()), ctr=box.getCenter(new THREE.Vector3());
+  model.position.set(-ctr.x, -box.min.y, -ctr.z);
+  const spin=new THREE.Group(); spin.add(model); scene.add(spin);
+  const radius=Math.max(size.x, size.z)/2;
+  const glow=new THREE.Mesh(new THREE.CircleGeometry(radius*1.12,28),
+    new THREE.MeshBasicMaterial({map:glowTex, transparent:true, depthWrite:false}));
+  glow.rotation.x=-Math.PI/2; glow.position.y=0.005; scene.add(glow);
+  const shadow=new THREE.Mesh(new THREE.CircleGeometry(radius*0.78,28),
+    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.38, depthWrite:false}));
+  shadow.rotation.x=-Math.PI/2; shadow.position.y=0.01; scene.add(shadow);
+
+  const cam=new THREE.PerspectiveCamera(38, 1, 0.1, 200);
+  const sphR=Math.sqrt(radius*radius + (size.y/2)*(size.y/2));
+  const d=sphR*2.75;
+  cam.position.set(d*0.52, size.y*0.5 + d*0.30, d*0.85);
+  cam.lookAt(0, size.y*0.46, 0);
+
+  const v={ data:L, panel, scene, cam, spin, rim,
+            angle:Math.random()*Math.PI*2, dragging:false, resumeAt:0,
+            phase:Math.random()*Math.PI*2 };
+  views.push(v);
+  attachPointer(v);
+});
+
+/* ---------------- selection + details ---------------- */
+const detailsEl=document.getElementById('details');
+let selectedId='eagle2';
+function renderDetails(L){
+  detailsEl.innerHTML=`
+    <div class="d-head"><span class="d-name">${L.name}</span><span class="d-role">${L.role}</span>
+      <span class="d-unlock">UNLOCK — ${L.unlock}</span></div>
+    <div class="stats">
+      <div class="stat"><div class="k">Mass</div><div class="v">${L.mass}</div></div>
+      <div class="stat"><div class="k">TWR</div><div class="v">${L.twr}</div></div>
+      <div class="stat"><div class="k">Turn</div><div class="v">${L.turn}</div></div>
+      <div class="stat"><div class="k">Tank</div><div class="v">${L.tank}</div></div>
+      <div class="stat"><div class="k">Abort cost</div><div class="v">${L.abort}</div></div>
+    </div>
+    <div class="d-extra">
+      <div><div class="k">Different to fly</div><div class="v">${L.fly}</div></div>
+      <div><div class="k">Pilot landing limits — Perfect / Good / Hard (descent · drift · tilt)</div>
+      <div class="v mono">${L.limits}</div></div>
+    </div>`;
+}
+function select(id){
+  selectedId=id;
+  views.forEach(v=>v.panel.classList.toggle('selected', v.data.id===id));
+  renderDetails(LANDERS.find(l=>l.id===id));
+}
+function attachPointer(v){
+  let down=false, lastX=0, moved=0;
+  v.panel.addEventListener('pointerdown', e=>{
+    down=true; moved=0; lastX=e.clientX; v.dragging=true;
+    v.panel.setPointerCapture(e.pointerId);
+  });
+  v.panel.addEventListener('pointermove', e=>{
+    if(!down) return;
+    const dx=e.clientX-lastX; lastX=e.clientX; moved+=Math.abs(dx);
+    v.angle += dx*0.012;
+  });
+  const end=e=>{
+    if(!down) return; down=false; v.dragging=false;
+    v.resumeAt=performance.now()+2000;
+    if(moved<6) select(v.data.id);
+  };
+  v.panel.addEventListener('pointerup', end);
+  v.panel.addEventListener('pointercancel', end);
+}
+select('eagle2');
+
+/* ---------------- test hooks (defined before the loop starts) ---------------- */
+window.__proto={
+  ready:false,
+  select, getSelected:()=>selectedId,
+  getAngle:i=>views[i].angle,
+  tris:()=>views.map(v=>{ let n=0; v.spin.traverse(o=>{ if(o.isMesh) n+=o.geometry.attributes.position.count/3; }); return Math.round(n); }),
+  panelPixels:i=>{
+    const r=views[i].panel.getBoundingClientRect();
+    const pr=renderer.getPixelRatio();
+    const c=document.createElement('canvas');
+    c.width=Math.max(2,Math.floor(r.width*pr)); c.height=Math.max(2,Math.floor(r.height*pr));
+    const x=c.getContext('2d');
+    x.drawImage(renderer.domElement, r.left*pr, r.top*pr, r.width*pr, r.height*pr, 0,0,c.width,c.height);
+    const d=x.getImageData(0,0,c.width,c.height).data;
+    let opaque=0; for(let p=3;p<d.length;p+=4) if(d[p]>16) opaque++;
+    return {opaque, total:c.width*c.height};
+  }
+};
+
+/* ---------------- render loop (one renderer, scissored per panel) ---------------- */
+const clock=new THREE.Clock();
+let firstFrame=true;
+function tick(){
+  requestAnimationFrame(tick);
+  const dt=Math.min(clock.getDelta(), 0.05), t=clock.elapsedTime, now=performance.now();
+  renderer.setScissorTest(true);
+  for(const v of views){
+    const sel=v.data.id===selectedId;
+    if(!v.dragging && now>=v.resumeAt) v.angle += dt*(Math.PI*2/12)*v.data.speed*(sel?1.5:1);
+    v.spin.rotation.y=v.angle;
+    v.spin.position.y=Math.sin(t*0.8+v.phase)*0.05;
+    v.rim.intensity += ((sel?2.4:0.35)-v.rim.intensity)*0.08;
+    const r=v.panel.getBoundingClientRect();
+    if(r.bottom<0 || r.top>window.innerHeight || r.width<4) continue;
+    const y=window.innerHeight-r.bottom;
+    renderer.setViewport(r.left, y, r.width, r.height);
+    renderer.setScissor(r.left, y, r.width, r.height);
+    v.cam.aspect=r.width/r.height; v.cam.updateProjectionMatrix();
+    renderer.render(v.scene, v.cam);
+  }
+  if(firstFrame){ firstFrame=false; window.__proto.ready=true; }
+}
+window.addEventListener('resize', ()=>{ renderer.setSize(window.innerWidth, window.innerHeight); });
+tick();
+</script>
+</body>
+</html>
