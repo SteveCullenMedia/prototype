@@ -48,7 +48,7 @@
   .panel{
     position:relative; height:308px; border:1px solid var(--line); border-radius:6px;
     background:linear-gradient(180deg, rgba(16,23,44,.35), rgba(8,11,22,.55));
-    cursor:pointer; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none;
+    cursor:pointer; overflow:hidden; touch-action:pan-y; user-select:none; -webkit-user-select:none;
     transition:border-color .15s, box-shadow .15s;
   }
   .panel:hover{border-color:#3a4a75}
@@ -58,11 +58,18 @@
     font-family:ui-monospace,"SF Mono",Consolas,monospace;
   }
   .panel .hint{
-    position:absolute; top:8px; right:10px; font-size:10px; letter-spacing:.18em; color:#5d6c8d; text-transform:uppercase;
+    position:absolute; top:8px; right:10px; font-size:10.5px; letter-spacing:.18em; color:var(--dim); text-transform:uppercase;
+  }
+  .panel:focus-visible{outline:2px solid var(--gold); outline-offset:2px; border-color:var(--gold)}
+  .panel .dim{position:absolute; inset:0; background:rgba(3,5,10,.30); pointer-events:none}
+  .panel .lockchip{
+    position:absolute; top:26px; left:10px; font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--gold); border:1px solid rgba(255,179,71,.55); border-radius:3px; padding:2.5px 6px;
+    background:rgba(10,10,16,.72); pointer-events:none; white-space:nowrap;
   }
   .nameplate{
     position:absolute; left:0; right:0; bottom:0; padding:9px 12px 10px;
-    background:linear-gradient(180deg, transparent, rgba(4,6,13,.88) 38%);
+    background:linear-gradient(180deg, transparent 42%, rgba(4,6,13,.88) 74%);
     pointer-events:none;
   }
   .nameplate .nm{font-size:17px; font-weight:650; letter-spacing:.06em}
@@ -76,8 +83,24 @@
   #details .d-name{font-size:22px; font-weight:700; letter-spacing:.05em; color:var(--gold)}
   #details .d-role{color:var(--ink); font-size:14px}
   #details .d-unlock{margin-left:auto; color:var(--gold); font-size:12.5px; letter-spacing:.04em}
-  .stats{display:grid; grid-template-columns:repeat(5,1fr); gap:12px 18px; margin-top:13px}
-  @media (max-width:800px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  .stats{display:grid; grid-template-columns:repeat(6,1fr); gap:12px 18px; margin-top:13px}
+  @media (max-width:800px){ .stats{grid-template-columns:repeat(3,1fr)} }
+  @media (max-width:480px){ .stats{grid-template-columns:repeat(2,1fr)} }
+  #stickybar{
+    display:none; position:fixed; left:0; right:0; bottom:0; z-index:5;
+    background:rgba(9,13,25,.96); border-top:1px solid var(--line-hi);
+    padding:8px 14px 10px; cursor:pointer; color:var(--ink);
+  }
+  #stickybar .sb-name{color:var(--gold); font-weight:700; font-size:15px; letter-spacing:.05em}
+  #stickybar .sb-stats{
+    font-family:ui-monospace,"SF Mono",Consolas,monospace; font-variant-numeric:tabular-nums;
+    font-size:12px; color:var(--dim); margin-left:10px;
+  }
+  #stickybar .sb-more{float:right; color:var(--gold); font-size:11px; letter-spacing:.14em; text-transform:uppercase; margin-top:3px}
+  @media (max-width:900px){
+    #stickybar{display:block}
+    .wrap{padding-bottom:76px}
+  }
   .stat .k{font-size:10.5px; letter-spacing:.22em; color:var(--dim); text-transform:uppercase}
   .stat .v{font-size:16.5px; margin-top:2px; font-variant-numeric:tabular-nums;
     font-family:ui-monospace,"SF Mono",Consolas,monospace}
@@ -86,7 +109,7 @@
   .d-extra .k{font-size:10.5px; letter-spacing:.22em; color:var(--dim); text-transform:uppercase}
   .d-extra .v{font-size:13.5px; margin-top:2px; line-height:1.45}
   .d-extra .v.mono{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-variant-numeric:tabular-nums}
-  footer{margin-top:16px; color:#5d6c8d; font-size:12px; letter-spacing:.03em; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap}
+  footer{margin-top:16px; color:var(--dim); font-size:12px; letter-spacing:.03em; display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap}
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js" } }
@@ -108,6 +131,8 @@
 
   <section id="details" aria-live="polite"></section>
 
+  <div id="stickybar" role="button" tabindex="0" aria-label="Jump to full lander details"></div>
+
   <footer>
     <span>Models shown at uniform scale for review. Click a lander to inspect it — drag a model to spin it.</span>
     <span>Concept prototype — not connected to the game.</span>
@@ -121,33 +146,38 @@ import * as THREE from 'three';
 /* ---------------- data (stats verbatim from the lander spec) ---------------- */
 const LANDERS = [
   { id:'eagle2', name:'Eagle 2', role:'The baseline contract lander.',
-    mass:'1.0x', twr:'2.1 g', turn:'95°/s direct', tank:'1.0x', abort:'16.7 s',
+    mass:'1.0x', twr:'2.1 g', turn:'95°/s direct', tank:'1.0x', abort:'16.7 s', floor:'1.3 m/s²',
     fly:'The reference feel — neutral, direct, no surprises. What the trainer teaches transfers 1:1.',
     limits:'P 1.0/0.6/4° · G 2.0/1.2/8° · H 3.2/2.0/12°',
     unlock:'Available from the start.', speed:1.0 },
   { id:'dowser', name:'Dowser', role:'Twitchy scout with hazard lidar.',
-    mass:'0.45x', twr:'2.8 g', turn:'150°/s, keeps spinning', tank:'1.1x', abort:'7 s',
+    mass:'0.45x', twr:'2.8 g', turn:'150°/s, keeps spinning', tank:'1.1x', abort:'7 s', floor:'1.75 m/s²',
+    chip:'Unlock — Callisto Training Run',
     fly:'Very light and very eager. Rotation keeps going after you let go — fly it with taps, not holds.',
     limits:'P 0.75/0.5/4° · G 1.5/1.0/8° · H 2.4/1.6/12°',
     unlock:'Free after the Callisto Training Run.', speed:1.25 },
   { id:'bullwheel', name:'Bullwheel', role:'Slow, heavy, nearly unstoppable.',
-    mass:'2.4x', twr:'1.7 g (2.4 g after drop)', turn:'50°/s, keeps spinning', tank:'0.95x', abort:'25 s',
+    mass:'2.4x', twr:'1.7 g (2.4 g after drop)', turn:'50°/s, keeps spinning (70 after drop)', tank:'0.95x', abort:'25 s', floor:'1.05 m/s²',
+    chip:'Unlock — Founding Charter',
     fly:'All momentum. Plan every burn early, and expect a different ship once the drop tanks are gone.',
     limits:'P 1.0/0.6/4° · G 2.0/1.2/8° · H 4.5/2.6/15°',
     unlock:'Free at the Founding Charter (all four Galilean moons).', speed:0.7 },
   { id:'plumbline', name:'Plumbline', role:'Slides sideways without tilting.',
-    mass:'1.15x', twr:'1.9 g', turn:'55°/s, self-levels', tank:'1.0x + 75 s side tank', abort:'16.7 s',
+    mass:'1.15x', twr:'1.9 g', turn:'55°/s, self-levels', tank:'1.0x + 75 s side tank', abort:'16.7 s', floor:'1.2 m/s²',
+    chip:'Hard Ground Pack',
     fly:'Translates laterally on its outriggers while the hull stays upright — precise, but a different muscle memory.',
     limits:'P 1.0/0.75/3° · G 2.0/1.5/5° · H 3.2/2.5/8°',
     unlock:'Hard Ground specialist pack.', speed:0.85 },
   { id:'highline', name:'Highline', role:'Lowers its base on a swinging cable.',
-    mass:'0.9x', twr:'2.8 g', turn:'95°/s', tank:'1.4x', abort:'16.7 s',
-    fly:'You are not landing the ship — you are landing the pod at the end of the cable. Mind the swing.',
+    mass:'0.9x', twr:'2.8 g', turn:'95°/s', tank:'1.4x', abort:'16.7 s', floor:'1.75 m/s²',
+    chip:'Hard Ground Pack',
+    fly:'Altitude hold parks the frame overhead while you work — you are not landing the ship, you are landing the pod at the end of the cable, and the base it sets earns ×0.8 output. Mind the swing.',
     limits:'(the pod) P 0.8/0.4/4° · G 1.5/0.8/8° · H 2.5/1.4/12°',
     unlock:'Hard Ground specialist pack.', speed:1.0 },
   { id:'holdfast', name:'Holdfast', role:'Harpoons itself to small rocks; lands on slopes.',
-    mass:'1.1x', twr:'1.45 g', turn:'125°/s', tank:'1.25x', abort:'16.7 s',
-    fly:'Low thrust, fast turning, and legs that bite. Fire the harpoons and the slope stops mattering — you are committed.',
+    mass:'1.1x', twr:'1.45 g', turn:'125°/s', tank:'1.25x', abort:'16.7 s', floor:'0.9 m/s²',
+    chip:'Hard Ground Pack',
+    fly:'Low thrust, fast turning, and legs that bite. The harpoons plant it on slopes up to 20° — but past 8° the grade caps at Hard, and on Europa ice they skid. Once you fire, you are committed.',
     limits:'P 1.2/0.6/4° · G 2.4/1.2/8° · H 3.8/2.0/20°',
     unlock:'Hard Ground specialist pack.', speed:1.1 },
 ];
@@ -884,12 +914,30 @@ const CRK = crinkleNormals(128);
 const LBUILD = { dowser: buildDowser, bullwheel: buildBullwheel, plumbline: buildPlumbline, highline: buildHighline, holdfast: buildHoldfast };
 function buildShowroom(id){
   if (id === 'eagle2') return buildEagle(CRK);      // buildEagle returns the group directly
-  return LBUILD[id](CRK).g;                          // the others return { g, g53, ... } — Modern group only
+  const built = LBUILD[id](CRK);
+  if (id === 'highline'){
+    // Showroom pose (fix C3): drive the game's own anim() with a synthetic
+    // static state so the wellhead pod hangs partway down on a visible cable
+    // instead of sitting docked under the frame. Identity game<->scene
+    // mapping, lander-local frame: winch at y=-1.35, pod hook at y=-2.65
+    // (cable 1.3). scale=20 only sets the cable radius via anim's
+    // max(0.025, 0.6/scale). R3D is the game's renderer object and the
+    // extracted anim reads R3D.burnt — stub it like DOWN/UPV/LV above.
+    if (!globalThis.R3D) globalThis.R3D = { burnt:true, burnMats:null };
+    const wrap = new THREE.Group(); wrap.add(built.g, built.world);
+    built.anim({
+      L:{ pod:{ x:0, y:-2.65, a:0, cable:1.3, landed:false, released:false } },
+      p53:false, dead:false, ms:1, scale:20, t:0.2, dt:0,
+      toGame:([x, y]) => [x, y], toScene:x => x,
+    });
+    return wrap;
+  }
+  return built.g;                                    // the others return { g, g53, ... } — Modern group only
 }
 
 /* ---------------- renderer / scenes ---------------- */
 const canvas=document.getElementById('gl');
-const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true, preserveDrawingBuffer:true});
+const renderer=new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.25));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);
@@ -899,7 +947,7 @@ function glowTexture(){
   const c=document.createElement('canvas'); c.width=c.height=128;
   const x=c.getContext('2d');
   const gr=x.createRadialGradient(64,64,4,64,64,64);
-  gr.addColorStop(0,'rgba(255,170,80,0.55)'); gr.addColorStop(0.45,'rgba(255,150,60,0.16)');
+  gr.addColorStop(0,'rgba(255,170,80,0.30)'); gr.addColorStop(0.45,'rgba(255,150,60,0.08)');
   gr.addColorStop(1,'rgba(255,150,60,0)');
   x.fillStyle=gr; x.fillRect(0,0,128,128);
   return new THREE.CanvasTexture(c);
@@ -910,15 +958,22 @@ const grid=document.getElementById('grid');
 const views=[];
 LANDERS.forEach((L,i)=>{
   const panel=document.createElement('div');
-  panel.className='panel'; panel.dataset.id=L.id;
-  panel.innerHTML=`<div class="idx">0${i+1} / 06</div><div class="hint">Drag to spin</div>
+  panel.className='panel'+(L.chip?' locked':''); panel.dataset.id=L.id;
+  panel.tabIndex=0; panel.setAttribute('role','button');
+  panel.setAttribute('aria-pressed','false');
+  panel.setAttribute('aria-label',`Select ${L.name} — ${L.role}`);
+  panel.innerHTML=`<div class="idx">0${i+1} / 06</div><div class="hint">Tap to inspect · Drag to spin</div>
+    ${L.chip?`<div class="dim"></div><div class="lockchip">${L.chip}</div>`:''}
     <div class="nameplate"><div class="nm">${L.name}</div><div class="role">${L.role}</div></div>`;
+  panel.addEventListener('keydown', e=>{
+    if(e.key==='Enter' || e.key===' '){ e.preventDefault(); select(L.id); }
+  });
   grid.appendChild(panel);
 
   const scene=new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xbdd0ff, 0x201408, 0.9));
   const key=new THREE.DirectionalLight(0xffffff, 1.9); key.position.set(3,5,4); scene.add(key);
-  const fill=new THREE.DirectionalLight(0x8fb0ff, 0.5); fill.position.set(-3,1.5,2.5); scene.add(fill);
+  const fill=new THREE.DirectionalLight(0x8fb0ff, 0.8); fill.position.set(-3,1.5,2.5); scene.add(fill);
   const rim=new THREE.DirectionalLight(0xff9a3c, 0.35); rim.position.set(-4,2.2,-3.5); scene.add(rim);
 
   // the game's real model, recentred: feet on y=0, centred on x/z
@@ -928,18 +983,22 @@ LANDERS.forEach((L,i)=>{
   model.position.set(-ctr.x, -box.min.y, -ctr.z);
   const spin=new THREE.Group(); spin.add(model); scene.add(spin);
   const radius=Math.max(size.x, size.z)/2;
-  const glow=new THREE.Mesh(new THREE.CircleGeometry(radius*1.12,28),
+  const glow=new THREE.Mesh(new THREE.CircleGeometry(radius*0.6,28),
     new THREE.MeshBasicMaterial({map:glowTex, transparent:true, depthWrite:false}));
   glow.rotation.x=-Math.PI/2; glow.position.y=0.005; scene.add(glow);
   const shadow=new THREE.Mesh(new THREE.CircleGeometry(radius*0.78,28),
-    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.38, depthWrite:false}));
+    new THREE.MeshBasicMaterial({color:0x000000, transparent:true, opacity:0.34, depthWrite:false}));
   shadow.rotation.x=-Math.PI/2; shadow.position.y=0.01; scene.add(shadow);
 
   const cam=new THREE.PerspectiveCamera(38, 1, 0.1, 200);
   const sphR=Math.sqrt(radius*radius + (size.y/2)*(size.y/2));
-  const d=sphR*2.75;
-  cam.position.set(d*0.52, size.y*0.5 + d*0.30, d*0.85);
-  cam.lookAt(0, size.y*0.46, 0);
+  // Fit the bounding sphere inside BOTH fovs (fix R2): grid panels are never
+  // narrower than ~square, so aspect 1 (hFov == vFov) is the worst case.
+  // d = sphR / sin(vFov/2), +6% margin so nothing kisses the edge mid-turn.
+  const d=sphR/Math.sin(19*DEG)*1.06;
+  const camTarget=new THREE.Vector3(0, size.y*0.46, 0);
+  cam.position.copy(camTarget).addScaledVector(new THREE.Vector3(0.52, 0.30, 0.85).normalize(), d);
+  cam.lookAt(camTarget);
 
   const v={ data:L, panel, scene, cam, spin, rim,
             angle:Math.random()*Math.PI*2, dragging:false, resumeAt:0,
@@ -950,6 +1009,12 @@ LANDERS.forEach((L,i)=>{
 
 /* ---------------- selection + details ---------------- */
 const detailsEl=document.getElementById('details');
+const stickyEl=document.getElementById('stickybar');
+const goDetails=()=>detailsEl.scrollIntoView({behavior:'smooth', block:'start'});
+stickyEl.addEventListener('click', goDetails);
+stickyEl.addEventListener('keydown', e=>{
+  if(e.key==='Enter' || e.key===' '){ e.preventDefault(); goDetails(); }
+});
 let selectedId='eagle2';
 function renderDetails(L){
   detailsEl.innerHTML=`
@@ -961,35 +1026,52 @@ function renderDetails(L){
       <div class="stat"><div class="k">Turn</div><div class="v">${L.turn}</div></div>
       <div class="stat"><div class="k">Tank</div><div class="v">${L.tank}</div></div>
       <div class="stat"><div class="k">Abort cost</div><div class="v">${L.abort}</div></div>
+      <div class="stat"><div class="k">Small-moon floor</div><div class="v">${L.floor}</div></div>
     </div>
     <div class="d-extra">
       <div><div class="k">Different to fly</div><div class="v">${L.fly}</div></div>
       <div><div class="k">Pilot landing limits — Perfect / Good / Hard (descent · drift · tilt)</div>
       <div class="v mono">${L.limits}</div></div>
     </div>`;
+  stickyEl.innerHTML=`<span class="sb-name">${L.name}</span><span class="sb-stats">${L.mass} · ${L.twr} · ${L.turn} · ${L.tank} · abort ${L.abort}</span><span class="sb-more">Details ↓</span>`;
 }
 function select(id){
   selectedId=id;
-  views.forEach(v=>v.panel.classList.toggle('selected', v.data.id===id));
+  views.forEach(v=>{
+    const on=v.data.id===id;
+    v.panel.classList.toggle('selected', on);
+    v.panel.setAttribute('aria-pressed', on?'true':'false');
+  });
   renderDetails(LANDERS.find(l=>l.id===id));
 }
 function attachPointer(v){
-  let down=false, lastX=0, moved=0;
+  // Fixes U1/U2/U3: the panel CSS is touch-action:pan-y, so vertical swipes
+  // are taken by the browser for page scroll (we get pointercancel, which
+  // never selects); horizontal drags arrive as pointer events and spin.
+  // Tap vs drag is NET displacement from the down point (<=12px = tap),
+  // never accumulated path length and never horizontal-only.
+  let down=false, x0=0, y0=0, lastX=0, dragging=false;
   v.panel.addEventListener('pointerdown', e=>{
-    down=true; moved=0; lastX=e.clientX; v.dragging=true;
-    v.panel.setPointerCapture(e.pointerId);
+    down=true; dragging=false; x0=e.clientX; y0=e.clientY; lastX=e.clientX;
+    if(e.pointerType==='mouse') v.panel.setPointerCapture(e.pointerId);
   });
   v.panel.addEventListener('pointermove', e=>{
     if(!down) return;
-    const dx=e.clientX-lastX; lastX=e.clientX; moved+=Math.abs(dx);
-    v.angle += dx*0.012;
+    const dx=e.clientX-lastX; lastX=e.clientX;
+    if(!dragging && Math.hypot(e.clientX-x0, e.clientY-y0)>12) dragging=true;
+    if(dragging){ v.dragging=true; v.angle += dx*0.012; }
   });
-  const end=e=>{
-    if(!down) return; down=false; v.dragging=false;
-    v.resumeAt=performance.now()+2000;
-    if(moved<6) select(v.data.id);
+  const end=()=>{
+    if(!down) return; down=false;
+    const wasDrag=dragging; dragging=false; v.dragging=false;
+    if(wasDrag) v.resumeAt=performance.now()+2000;
   };
-  v.panel.addEventListener('pointerup', end);
+  v.panel.addEventListener('pointerup', e=>{
+    if(!down) return;
+    const tap=Math.hypot(e.clientX-x0, e.clientY-y0)<=12;
+    end();
+    if(tap) select(v.data.id);
+  });
   v.panel.addEventListener('pointercancel', end);
 }
 select('eagle2');
@@ -1001,6 +1083,7 @@ window.__proto={
   getAngle:i=>views[i].angle,
   tris:()=>views.map(v=>{ let n=0; v.spin.traverse(o=>{ if(o.isMesh) n+=o.geometry.attributes.position.count/3; }); return Math.round(n); }),
   panelPixels:i=>{
+    renderAll();   // no preserveDrawingBuffer in v2: force a fresh frame in this task before readback
     const r=views[i].panel.getBoundingClientRect();
     const pr=renderer.getPixelRatio();
     const c=document.createElement('canvas');
@@ -1014,26 +1097,38 @@ window.__proto={
 };
 
 /* ---------------- render loop (one renderer, scissored per panel) ---------------- */
+function renderAll(){
+  // Fix R1: the shared canvas was never cleared in v1 (autoClear=false, no
+  // manual clear), so every panel accumulated every past orientation.
+  // Clear colour+depth once per frame at full-canvas, then depth per view.
+  renderer.setScissorTest(false);
+  renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
+  renderer.clear();
+  renderer.setScissorTest(true);
+  for(const v of views){
+    const r=v.panel.getBoundingClientRect();
+    if(r.bottom<0 || r.top>window.innerHeight || r.width<4) continue;
+    const y=window.innerHeight-r.bottom;
+    renderer.setViewport(r.left, y, r.width, r.height);
+    renderer.setScissor(r.left, y, r.width, r.height);
+    renderer.clearDepth();
+    v.cam.aspect=r.width/r.height; v.cam.updateProjectionMatrix();
+    renderer.render(v.scene, v.cam);
+  }
+}
 const clock=new THREE.Clock();
 let firstFrame=true;
 function tick(){
   requestAnimationFrame(tick);
   const dt=Math.min(clock.getDelta(), 0.05), t=clock.elapsedTime, now=performance.now();
-  renderer.setScissorTest(true);
   for(const v of views){
     const sel=v.data.id===selectedId;
     if(!v.dragging && now>=v.resumeAt) v.angle += dt*(Math.PI*2/12)*v.data.speed*(sel?1.5:1);
     v.spin.rotation.y=v.angle;
     v.spin.position.y=Math.sin(t*0.8+v.phase)*0.05;
     v.rim.intensity += ((sel?2.4:0.35)-v.rim.intensity)*0.08;
-    const r=v.panel.getBoundingClientRect();
-    if(r.bottom<0 || r.top>window.innerHeight || r.width<4) continue;
-    const y=window.innerHeight-r.bottom;
-    renderer.setViewport(r.left, y, r.width, r.height);
-    renderer.setScissor(r.left, y, r.width, r.height);
-    v.cam.aspect=r.width/r.height; v.cam.updateProjectionMatrix();
-    renderer.render(v.scene, v.cam);
   }
+  renderAll();
   if(firstFrame){ firstFrame=false; window.__proto.ready=true; }
 }
 window.addEventListener('resize', ()=>{ renderer.setSize(window.innerWidth, window.innerHeight); });
