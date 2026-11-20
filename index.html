@@ -138,7 +138,7 @@
     <span>Concept prototype — not connected to the game.</span>
   </footer>
 </div>
-
+<script src="textures/eagle2-hull-bake.js"></script><script src="textures/eagle2-nasa-decal.js"></script><script src="textures/dowser-hull-bake.js"></script><script src="textures/bullwheel-hull-bake.js"></script><script src="textures/plumbline-hull-bake.js"></script><script src="textures/highline-hull-bake.js"></script><script src="textures/holdfast-hull-bake.js"></script>
 <script type="module">
 
 import * as THREE from 'three';
@@ -928,13 +928,13 @@ const LBUILD = { dowser: buildDowser, bullwheel: buildBullwheel, plumbline: buil
    staging file and its self-contained builds need no external texture
    requests.  The hull bake replaces Eagle's runtime-generated 1024px
    detail canvas; the NASA worm is a prototype homage approximation. */
-const EAGLE_HULL_BAKE_URI = 'textures/eagle2-hull-bake.png';
-const EAGLE_NASA_DECAL_URI = 'textures/eagle2-nasa-decal.png';
-const DOWSER_HULL_BAKE_URI = 'textures/dowser-hull-bake.png';
-const BULLWHEEL_HULL_BAKE_URI = 'textures/bullwheel-hull-bake.png';
-const PLUMBLINE_HULL_BAKE_URI = 'textures/plumbline-hull-bake.png';
-const HIGHLINE_HULL_BAKE_URI = 'textures/highline-hull-bake.png';
-const HOLDFAST_HULL_BAKE_URI = 'textures/holdfast-hull-bake.png';
+const EAGLE_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["eagle2-hull"]) || "textures/eagle2-hull-bake.png";
+const EAGLE_NASA_DECAL_URI = (window.BAKE_URIS && window.BAKE_URIS["eagle2-nasa"]) || "textures/eagle2-nasa-decal.png";
+const DOWSER_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["dowser-hull"]) || "textures/dowser-hull-bake.png";
+const BULLWHEEL_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["bullwheel-hull"]) || "textures/bullwheel-hull-bake.png";
+const PLUMBLINE_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["plumbline-hull"]) || "textures/plumbline-hull-bake.png";
+const HIGHLINE_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["highline-hull"]) || "textures/highline-hull-bake.png";
+const HOLDFAST_HULL_BAKE_URI = (window.BAKE_URIS && window.BAKE_URIS["holdfast-hull"]) || "textures/holdfast-hull-bake.png";
 
 function textureEagleProof(g){
   let seed = 1877;   // deterministic rng: the proof is reproducible
