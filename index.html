@@ -912,8 +912,766 @@ DOWN = new THREE.Vector3(0, -1, 0); UPV = new THREE.Vector3(0, 1, 0);
 LV = [new THREE.Vector3(), new THREE.Vector3()];
 const CRK = crinkleNormals(128);
 const LBUILD = { dowser: buildDowser, bullwheel: buildBullwheel, plumbline: buildPlumbline, highline: buildHighline, holdfast: buildHoldfast };
+
+/* ---------------- Eagle 2 texture proof (glue-side only) ----------------
+   Taste proof: procedural canvas textures + vertex-colour dust/scorch,
+   applied ONLY to Eagle's group after buildEagle returns. The builders
+   merge one buffer per material and (except foil) write no UVs, so the glue
+   generates box-projection UVs from local position/normal, and bakes the
+   height-based effects (dust low on the legs/pads, soot at the bell) into
+   the existing vertex colours. Every material is CLONED before it is
+   touched — the palette materials are shared across landers and the other
+   five panels must stay exactly as they were. */
+function textureEagleProof(g){
+  let seed = 1877;   // deterministic rng: the proof is reproducible
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const mkCanvas = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; };
+  const tex = (c, srgb) => { const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+  const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  // Hull detail map (1024², one tile = 2 m at the box-UV scale below):
+  // near-white base so the vertex colours still tint (three.js multiplies
+  // map x colour), with panel seams, rivets, faint streaks and mottling.
+  const hullMap = tex(mkCanvas(1024, 1024, (x, W, H) => {
+    x.fillStyle = '#f6f4ef'; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < 260; i++) {
+      const r = 30 + rnd() * 150, gx = rnd() * W, gy = rnd() * H;
+      const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+      gr.addColorStop(0, rnd() > 0.45 ? 'rgba(105,105,112,0.055)' : 'rgba(255,255,255,0.06)');
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+    }
+    for (let i = 0; i < 22; i++) {   // faint vertical streaks
+      const sx = rnd() * W, sy = rnd() * H, ln = 50 + rnd() * 190;
+      const gr = x.createLinearGradient(0, sy, 0, sy + ln);
+      gr.addColorStop(0, 'rgba(70,68,64,0.13)'); gr.addColorStop(1, 'rgba(70,68,64,0)');
+      x.fillStyle = gr; x.fillRect(sx, sy, 2 + rnd() * 4, ln);
+    }
+    const seam = (v, horiz) => {
+      x.strokeStyle = 'rgba(45,47,55,0.5)'; x.lineWidth = 2;
+      x.beginPath(); if (horiz) { x.moveTo(0, v); x.lineTo(W, v); } else { x.moveTo(v, 0); x.lineTo(v, H); } x.stroke();
+      x.strokeStyle = 'rgba(45,47,55,0.22)'; x.lineWidth = 1;
+      x.beginPath(); if (horiz) { x.moveTo(0, v + 5); x.lineTo(W, v + 5); } else { x.moveTo(v + 5, 0); x.lineTo(v + 5, H); } x.stroke();
+      x.fillStyle = 'rgba(45,47,55,0.5)';
+      for (let d = 14; d < (horiz ? W : H); d += 26) { x.beginPath(); x.arc(horiz ? d : v - 8, horiz ? v - 8 : d, 1.7, 0, 7); x.fill(); }
+    };
+    seam(0, false); seam(341, false); seam(683, false); seam(0, true); seam(512, true);
+    x.strokeStyle = 'rgba(45,47,55,0.35)'; x.lineWidth = 2;   // one access-hatch outline
+    x.strokeRect(700, 640, 150, 190);
+    x.fillStyle = 'rgba(45,47,55,0.55)';
+    for (const [hx, hy] of [[712, 652], [838, 652], [712, 818], [838, 818]]) { x.beginPath(); x.arc(hx, hy, 2.4, 0, 7); x.fill(); }
+  }), true);
+
+  // Roughness variation (three.js reads the green channel; greyscale is fine)
+  const roughCanvas = (base, n, amp) => mkCanvas(512, 512, (x, W, H) => {
+    x.fillStyle = base; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < n; i++) {
+      const r = 16 + rnd() * 110, gx = rnd() * W, gy = rnd() * H, v = rnd() > 0.5 ? 255 : 0;
+      const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+      gr.addColorStop(0, `rgba(${v},${v},${v},${(amp * rnd()).toFixed(3)})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+    }
+  });
+  const hullRough = tex(roughCanvas('#dedede', 240, 0.20));
+  const metalRough = tex(roughCanvas('#d2d2d2', 200, 0.22));
+  const foilRough = tex(roughCanvas('#e6e6e6', 260, 0.16));
+
+  // Box-projection UVs (dominant axis, 0.5 units per metre -> 2 m tiles)
+  const boxUV = (geo, s) => {
+    const p = geo.attributes.position, n = geo.attributes.normal, uv = new Float32Array(p.count * 2);
+    for (let i = 0; i < p.count; i++) {
+      const nx = Math.abs(n.getX(i)), ny = Math.abs(n.getY(i)), nz = Math.abs(n.getZ(i));
+      let u, v;
+      if (nx >= ny && nx >= nz) { u = p.getZ(i); v = p.getY(i); }
+      else if (ny >= nz) { u = p.getX(i); v = p.getZ(i); }
+      else { u = p.getX(i); v = p.getY(i); }
+      uv[i * 2] = u * s; uv[i * 2 + 1] = v * s;
+    }
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  };
+
+  // Height-baked vertex-colour effects (Eagle frame: feet at y = -3.2).
+  // BOLD PASS (Steve's verdict on the first proof: dust, bell scorch and pad
+  // regolith were invisible at panel distance): pad coat 0.62 -> 0.85 with a
+  // darker compressed tint on the pad cone, strut dust climbing to ~55% of
+  // the leg, bell soot peaking at 0.92 at the rim and reaching ~60% up the
+  // bell, plus splash-up on the descent stage's lower band. Colours are in
+  // the vertex attribute's linear space, like the builders' own colours.
+  const grain = (x, y, z) => 0.6 + 0.4 * Math.sin(x * 12.9 + y * 7.7 + z * 9.1) * Math.sin(x * 3.3 - z * 5.2);
+  const hash3 = (x, y, z) => { const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return h - Math.floor(h); };
+  const DUST = [0.76, 0.72, 0.65], DUST_DARK = [0.60, 0.565, 0.51], SOOT = [0.014, 0.011, 0.009];   // soot is near-black IN LINEAR SPACE (the bell's own base colour is only 0.073 linear)
+  const dustPaint = (x, y, z, ny, r, g, b) => {
+    if (y <= -2.85) {   // the footpad assembly (dish, rim, neck cone): heavy regolith coat
+      const patch = 0.74 + 0.26 * hash3(x, y, z);
+      if (r > 0.5 && g > 0.08 && g < 0.30 && b < 0.08) return [DUST[0], DUST[1], DUST[2], 0.50 * patch];   // orange rim: dusted, paint still hints through
+      if (y > -3.02) return [DUST_DARK[0], DUST_DARK[1], DUST_DARK[2], 0.90];   // neck cone: darker, compressed look
+      return [DUST[0], DUST[1], DUST[2], Math.min(0.85, 0.85 * patch + 0.10)];
+    }
+    if (y > -1.12 && y < 0.15 && Math.hypot(x, z) > 1.85) {   // splash-up on the descent stage's lower band + around the tank bays
+      const a = 0.52 * sstep(0.15, -0.75, y) * grain(x, y, z);
+      return a <= 0.02 ? null : [DUST[0], DUST[1], DUST[2], a];
+    }
+    return null;
+  };
+  const dustMetal = (x, y, z) => {   // struts: full coat low, fading out at y = -0.97 (~55% of the leg span up from the foot)
+    const a = 0.85 * sstep(-0.97, -2.2, y) * (0.8 + 0.2 * grain(x, y, z));
+    return a <= 0.02 ? null : [DUST[0], DUST[1], DUST[2], a];
+  };
+  const scorchMix = (x, y, z) => {            // soot at the engine bell (axis x=z=0, y -1.12..-2.05): near-black at the rim, reaching ~60% up
+    const r = Math.hypot(x, z);
+    if (y > -1.0 || r > 1.3) return null;
+    const f = sstep(-1.38, -2.0, y) * (0.85 + 0.15 * grain(x, y, z));
+    return f <= 0.01 ? null : [SOOT[0], SOOT[1], SOOT[2], Math.min(0.92, f * 0.95)];
+  };
+  const bake = (mesh, fn) => {
+    const p = mesh.geometry.attributes.position, n = mesh.geometry.attributes.normal, c = mesh.geometry.attributes.color;
+    if (!c) return;
+    for (let i = 0; i < p.count; i++) {
+      const m = fn(p.getX(i), p.getY(i), p.getZ(i), n.getY(i), c.getX(i), c.getY(i), c.getZ(i));
+      if (!m) continue;
+      c.setXYZ(i, c.getX(i) + (m[0] - c.getX(i)) * m[3], c.getY(i) + (m[1] - c.getY(i)) * m[3], c.getZ(i) + (m[2] - c.getZ(i)) * m[3]);
+    }
+    c.needsUpdate = true;
+  };
+
+  let paintMesh = null;
+  g.traverse(o => {
+    if (!o.isMesh) return;
+    const kind = o.name.split('_').pop();     // eagle_paint -> paint, etc.
+    if (kind === 'lamp' || kind === 'glass') return;
+    o.material = o.material.clone();          // never modify a shared material
+    if (kind === 'paint') { boxUV(o.geometry, 0.5); o.material.map = hullMap; o.material.roughnessMap = hullRough; bake(o, dustPaint); paintMesh = o; }
+    else if (kind === 'metal') { boxUV(o.geometry, 0.5); o.material.roughnessMap = metalRough; bake(o, dustMetal); }
+    else if (kind === 'dark') { boxUV(o.geometry, 0.5); o.material.roughnessMap = metalRough; bake(o, scorchMix); }
+    else if (kind === 'foil') { o.material.roughnessMap = foilRough; }   // foil buffer already carries UVs; crinkle normal map untouched
+    o.material.needsUpdate = true;
+  });
+
+  // Footpads, split out of the paint mesh so they can carry a real speckle
+  // map (the merged buffers are far too coarse for per-vertex speckle, and
+  // the pad top cap is a fan with no centre vertex for a compressed disc).
+  // Pad triangles (all three verts at y <= -2.85) move to a sibling mesh
+  // with planar top-down UVs per pad, so one shared canvas serves all four:
+  // pale regolith speckle over the whole pad, a darker compressed disc at
+  // the centre where the foot presses, matte roughness throughout.
+  if (paintMesh) {
+    const src = paintMesh.geometry, sp = src.attributes.position, sn = src.attributes.normal, sc = src.attributes.color, su = src.attributes.uv;
+    const centres = {};
+    for (let i = 0; i < sp.count; i++) {
+      if (sp.getY(i) > -2.85) continue;
+      const key = (sp.getX(i) < 0 ? '-' : '+') + (sp.getZ(i) < 0 ? '-' : '+'), c = centres[key] || (centres[key] = [0, 0, 0]);
+      c[0] += sp.getX(i); c[1] += sp.getZ(i); c[2]++;
+    }
+    for (const k in centres) { centres[k][0] /= centres[k][2]; centres[k][1] /= centres[k][2]; }
+    const padIdx = [], restIdx = [];
+    for (let t = 0; t < sp.count; t += 3) {
+      const pad = sp.getY(t) <= -2.85 && sp.getY(t + 1) <= -2.85 && sp.getY(t + 2) <= -2.85;
+      (pad ? padIdx : restIdx).push(t, t + 1, t + 2);
+    }
+    const build = (idx, planar) => {
+      const n = idx.length, P = new Float32Array(n * 3), N = new Float32Array(n * 3), Cc = new Float32Array(n * 3), U = new Float32Array(n * 2);
+      idx.forEach((vi, j) => {
+        P.set([sp.getX(vi), sp.getY(vi), sp.getZ(vi)], j * 3);
+        N.set([sn.getX(vi), sn.getY(vi), sn.getZ(vi)], j * 3);
+        Cc.set([sc.getX(vi), sc.getY(vi), sc.getZ(vi)], j * 3);
+        if (planar) { const c = centres[(sp.getX(vi) < 0 ? '-' : '+') + (sp.getZ(vi) < 0 ? '-' : '+')]; U.set([(sp.getX(vi) - c[0]) / 1.5 + 0.5, (sp.getZ(vi) - c[1]) / 1.5 + 0.5], j * 2); }
+        else U.set([su.getX(vi), su.getY(vi)], j * 2);
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+      geo.computeBoundingSphere();
+      return geo;
+    };
+    const dustSpeckle = tex(mkCanvas(512, 512, (x, W, H) => {
+      x.fillStyle = '#f4f0e8'; x.fillRect(0, 0, W, H);
+      for (let i = 0; i < 130; i++) {   // soft blotches
+        const r = 14 + rnd() * 70, gx = rnd() * W, gy = rnd() * H;
+        const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+        gr.addColorStop(0, rnd() > 0.5 ? 'rgba(120,110,95,0.10)' : 'rgba(255,255,255,0.10)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+      }
+      for (let i = 0; i < 9000; i++) {   // dense regolith speckle
+        const v = 150 + Math.floor(rnd() * 105), a = 0.05 + rnd() * 0.20, s = rnd() < 0.85 ? 1.4 : 2.6;
+        x.fillStyle = `rgba(${v},${v - 6},${v - 18},${a.toFixed(3)})`;
+        x.fillRect(rnd() * W, rnd() * H, s, s);
+      }
+      const gr = x.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W * 0.30);   // compressed disc at the pad centre (footprint press)
+      gr.addColorStop(0, 'rgba(74,68,60,0.46)'); gr.addColorStop(0.75, 'rgba(74,68,60,0.30)'); gr.addColorStop(1, 'rgba(74,68,60,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, W, H);
+    }), true);
+    const padMesh = new THREE.Mesh(build(padIdx, true), paintMesh.material.clone());
+    padMesh.material.map = dustSpeckle;
+    padMesh.material.roughnessMap = tex(roughCanvas('#eaeaea', 200, 0.10));
+    padMesh.material.roughness = 1.0;   // regolith is matte
+    padMesh.material.needsUpdate = true;
+    padMesh.name = 'eagle_pads';
+    padMesh.castShadow = padMesh.receiveShadow = true;
+    paintMesh.geometry = build(restIdx, false);
+    g.add(padMesh);
+  }
+
+  // Soot stain on the descent-stage underside around the bell. The stage's
+  // bottom cap is a single fan of eight rim vertices, so a vertex-colour
+  // gradient has nothing to interpolate from; instead a decal disc hangs
+  // 14 mm below the cap (the game's own decal offset), transparent at the
+  // centre where the chamber and gimbal pass through it.
+  const sootTex = new THREE.CanvasTexture(mkCanvas(512, 512, (x, W, H) => {
+    x.clearRect(0, 0, W, H);
+    const gr = x.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, W / 2);
+    gr.addColorStop(0.00, 'rgba(12,9,7,0)');
+    gr.addColorStop(0.36, 'rgba(12,9,7,0)');
+    gr.addColorStop(0.50, 'rgba(12,9,7,0.88)');
+    gr.addColorStop(0.72, 'rgba(12,9,7,0.72)');
+    gr.addColorStop(1.00, 'rgba(12,9,7,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, W, H);
+    x.globalCompositeOperation = 'destination-out';   // ragged streaks eaten out of the stain
+    for (let i = 0; i < 46; i++) {
+      const a0 = rnd() * Math.PI * 2, wdt = 0.02 + rnd() * 0.07;
+      x.fillStyle = `rgba(0,0,0,${(0.10 + rnd() * 0.22).toFixed(3)})`;
+      x.beginPath(); x.moveTo(W / 2, H / 2);
+      x.arc(W / 2, H / 2, W / 2, a0, a0 + wdt); x.closePath(); x.fill();
+    }
+    x.globalCompositeOperation = 'source-over';   // grit in the soot
+    for (let i = 0; i < 1600; i++) {
+      const a0 = rnd() * Math.PI * 2, rr = (0.34 + rnd() * 0.64) * W / 2;
+      x.fillStyle = `rgba(0,0,0,${(0.10 + rnd() * 0.25).toFixed(3)})`;
+      x.fillRect(W / 2 + Math.cos(a0) * rr, H / 2 + Math.sin(a0) * rr, 1.6, 1.6);
+    }
+  }));
+  sootTex.colorSpace = THREE.SRGBColorSpace; sootTex.anisotropy = 4;
+  const soot = new THREE.Mesh(new THREE.CircleGeometry(1.55, 40),
+    new THREE.MeshStandardMaterial({ map: sootTex, transparent: true, metalness: 0.1, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }));
+  soot.rotation.x = Math.PI / 2;   // face down
+  soot.position.set(0, -1.064, 0);
+  soot.renderOrder = 3;
+  soot.name = 'eagle_soot';
+  g.add(soot);
+
+  // Stencil: "EAGLE 2" on the cabin's flat front face (z = 1.5, y 1.06..2.5),
+  // placed clear of the hatch (x 0.4..1.0), the stripe dash (y ~1.9) and the
+  // port floodlight (x -1.1, y 1.2). A decal plane 12 mm proud of the face —
+  // the same offset the game's own loft decals use.
+  const stencilTex = new THREE.CanvasTexture(mkCanvas(512, 168, (x, W, H) => {
+    x.clearRect(0, 0, W, H);
+    x.fillStyle = 'rgba(40,44,54,0.92)';
+    x.font = '700 92px Arial, sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText('EAGLE 2', W / 2, H / 2 - 12);
+    x.fillStyle = 'rgba(224,112,40,0.95)'; x.fillRect(W / 2 - 120, H - 34, 240, 9);
+  }));
+  stencilTex.colorSpace = THREE.SRGBColorSpace; stencilTex.anisotropy = 4;
+  const decal = new THREE.Mesh(new THREE.PlaneGeometry(0.95, 0.31),
+    new THREE.MeshStandardMaterial({ map: stencilTex, transparent: true, metalness: 0.05, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }));
+  decal.position.set(-0.42, 1.48, 1.512);
+  decal.name = 'eagle_stencil';
+  g.add(decal);
+}
+
+
+/* ---------------- Fleet texture rollout (glue-side only) ----------------
+   The approved Eagle 2 bold pass, generalised to the other five landers.
+   Same rules as textureEagleProof: the builders merge one buffer per
+   material and (except foil) write no UVs, so the glue generates
+   box-projection UVs and bakes zone effects into the existing vertex
+   colours; every material is CLONED per mesh before it is touched (the
+   palette is shared across landers, and Bullwheel's tanks / Holdfast's
+   legs share material instances between meshes of the same lander).
+   Frames: the five newer builders draw ground-up with feet at h = 0 and
+   finish() bakes the kit offset in, so in group coordinates
+   h = y - LFOOT (LFOOT = -3.2). Vertex colours are LINEAR — soot is
+   (0.014, 0.011, 0.009), genuinely near-black; the first Eagle proof's
+   "soot" was lighter than the bell it was meant to darken. */
+function textureLander(id, root){
+  let seed = ({ dowser: 4411, bullwheel: 9021, plumbline: 7331, highline: 5150, holdfast: 6602 })[id] || 1000;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const mkCanvas = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; };
+  const tex = (c, srgb) => { const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; };
+  const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const lin = (r, g, b) => { const c = new THREE.Color(); c.setRGB(r, g, b, THREE.SRGBColorSpace); return [c.r, c.g, c.b]; };
+  const grain = (x, y, z) => 0.6 + 0.4 * Math.sin(x * 12.9 + y * 7.7 + z * 9.1) * Math.sin(x * 3.3 - z * 5.2);
+  const hash3 = (x, y, z) => { const h = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return h - Math.floor(h); };
+  const DUST = [0.76, 0.72, 0.65], SOOT = [0.014, 0.011, 0.009], GREASE = [0.045, 0.04, 0.035];
+  const TITAN = lin(0.55, 0.57, 0.60), ORG = lin(0.95, 0.44, 0.10);
+  const H = y => y - LFOOT;   // height above the feet (= the builders' kit y)
+
+  // Parameterised hull detail map: near-white base (vertex colours still
+  // tint), panel seams + rivets, streaks, mottling, optional hatch outline.
+  const hullCanvas = (o) => mkCanvas(1024, 1024, (x, W, Hh) => {
+    x.fillStyle = '#f6f4ef'; x.fillRect(0, 0, W, Hh);
+    for (let i = 0; i < o.mottle; i++) {
+      const r = 30 + rnd() * 150, gx = rnd() * W, gy = rnd() * Hh;
+      const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+      gr.addColorStop(0, rnd() > 0.45 ? `rgba(105,105,112,${o.mottleA})` : `rgba(255,255,255,${o.mottleA})`);
+      gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+    }
+    for (let i = 0; i < o.streaks; i++) {
+      const sx = rnd() * W, sy = rnd() * Hh, ln = 50 + rnd() * 190;
+      const gr = x.createLinearGradient(0, sy, 0, sy + ln);
+      gr.addColorStop(0, `rgba(70,68,64,${o.streakA})`); gr.addColorStop(1, 'rgba(70,68,64,0)');
+      x.fillStyle = gr; x.fillRect(sx, sy, 2 + rnd() * 4, ln);
+    }
+    const seam = (v, horiz) => {
+      x.strokeStyle = `rgba(45,47,55,${o.seamA})`; x.lineWidth = 2;
+      x.beginPath(); if (horiz) { x.moveTo(0, v); x.lineTo(W, v); } else { x.moveTo(v, 0); x.lineTo(v, Hh); } x.stroke();
+      x.strokeStyle = `rgba(45,47,55,${o.seamA * 0.44})`; x.lineWidth = 1;
+      x.beginPath(); if (horiz) { x.moveTo(0, v + 5); x.lineTo(W, v + 5); } else { x.moveTo(v + 5, 0); x.lineTo(v + 5, Hh); } x.stroke();
+      x.fillStyle = `rgba(45,47,55,${o.seamA})`;
+      for (let d = 14; d < (horiz ? W : Hh); d += 26) { x.beginPath(); x.arc(horiz ? d : v - 8, horiz ? v - 8 : d, 1.7, 0, 7); x.fill(); }
+    };
+    seam(0, false); seam(341, false); seam(683, false); seam(0, true); seam(512, true);
+    if (o.hatch) {
+      x.strokeStyle = 'rgba(45,47,55,0.35)'; x.lineWidth = 2;
+      x.strokeRect(700, 640, 150, 190);
+      x.fillStyle = 'rgba(45,47,55,0.55)';
+      for (const [hx, hy] of [[712, 652], [838, 652], [712, 818], [838, 818]]) { x.beginPath(); x.arc(hx, hy, 2.4, 0, 7); x.fill(); }
+    }
+  });
+  const roughCanvas = (base, n, amp) => mkCanvas(512, 512, (x, W, Hh) => {
+    x.fillStyle = base; x.fillRect(0, 0, W, Hh);
+    for (let i = 0; i < n; i++) {
+      const r = 16 + rnd() * 110, gx = rnd() * W, gy = rnd() * Hh, v = rnd() > 0.5 ? 255 : 0;
+      const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+      gr.addColorStop(0, `rgba(${v},${v},${v},${(amp * rnd()).toFixed(3)})`); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+    }
+  });
+  // Regolith speckle for split-out footpads (Eagle's pad canvas, parameterised)
+  const speckleCanvas = (speck, discA) => mkCanvas(512, 512, (x, W, Hh) => {
+    x.fillStyle = '#f4f0e8'; x.fillRect(0, 0, W, Hh);
+    for (let i = 0; i < 130; i++) {
+      const r = 14 + rnd() * 70, gx = rnd() * W, gy = rnd() * Hh;
+      const gr = x.createRadialGradient(gx, gy, 0, gx, gy, r);
+      gr.addColorStop(0, rnd() > 0.5 ? 'rgba(120,110,95,0.10)' : 'rgba(255,255,255,0.10)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = gr; x.beginPath(); x.arc(gx, gy, r, 0, 7); x.fill();
+    }
+    for (let i = 0; i < speck; i++) {
+      const v = 150 + Math.floor(rnd() * 105), a = 0.05 + rnd() * 0.20, s = rnd() < 0.85 ? 1.4 : 2.6;
+      x.fillStyle = `rgba(${v},${v - 6},${v - 18},${a.toFixed(3)})`;
+      x.fillRect(rnd() * W, rnd() * Hh, s, s);
+    }
+    if (discA > 0) {
+      const gr = x.createRadialGradient(W / 2, Hh / 2, 0, W / 2, Hh / 2, W * 0.30);
+      gr.addColorStop(0, `rgba(74,68,60,${discA})`); gr.addColorStop(0.75, `rgba(74,68,60,${(discA * 0.65).toFixed(3)})`); gr.addColorStop(1, 'rgba(74,68,60,0)');
+      x.fillStyle = gr; x.fillRect(0, 0, W, Hh);
+    }
+  });
+  // Soot stain disc (Eagle's underside decal canvas)
+  const sootCanvas = () => mkCanvas(512, 512, (x, W, Hh) => {
+    x.clearRect(0, 0, W, Hh);
+    const gr = x.createRadialGradient(W / 2, Hh / 2, 0, W / 2, Hh / 2, W / 2);
+    gr.addColorStop(0.00, 'rgba(12,9,7,0)');
+    gr.addColorStop(0.36, 'rgba(12,9,7,0)');
+    gr.addColorStop(0.50, 'rgba(12,9,7,0.88)');
+    gr.addColorStop(0.72, 'rgba(12,9,7,0.72)');
+    gr.addColorStop(1.00, 'rgba(12,9,7,0)');
+    x.fillStyle = gr; x.fillRect(0, 0, W, Hh);
+    x.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 46; i++) {
+      const a0 = rnd() * Math.PI * 2, wdt = 0.02 + rnd() * 0.07;
+      x.fillStyle = `rgba(0,0,0,${(0.10 + rnd() * 0.22).toFixed(3)})`;
+      x.beginPath(); x.moveTo(W / 2, Hh / 2);
+      x.arc(W / 2, Hh / 2, W / 2, a0, a0 + wdt); x.closePath(); x.fill();
+    }
+    x.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < 1600; i++) {
+      const a0 = rnd() * Math.PI * 2, rr = (0.34 + rnd() * 0.64) * W / 2;
+      x.fillStyle = `rgba(0,0,0,${(0.10 + rnd() * 0.25).toFixed(3)})`;
+      x.fillRect(W / 2 + Math.cos(a0) * rr, Hh / 2 + Math.sin(a0) * rr, 1.6, 1.6);
+    }
+  });
+
+  const hullStd = tex(hullCanvas({ mottle: 260, mottleA: 0.055, streaks: 22, streakA: 0.13, seamA: 0.5, hatch: true }), true);
+  const hullGrime = tex(hullCanvas({ mottle: 340, mottleA: 0.08, streaks: 48, streakA: 0.20, seamA: 0.6, hatch: true }), true);
+  const hullLight = tex(hullCanvas({ mottle: 140, mottleA: 0.03, streaks: 8, streakA: 0.05, seamA: 0.26, hatch: false }), true);
+  const hullRough = tex(roughCanvas('#dedede', 240, 0.20));
+  const metalRough = tex(roughCanvas('#d2d2d2', 200, 0.22));
+  const foilRough = tex(roughCanvas('#e6e6e6', 260, 0.16));
+  const speckStd = tex(speckleCanvas(9000, 0.46), true);
+  const speckLight = tex(speckleCanvas(3200, 0.15), true);
+  const padRough = tex(roughCanvas('#eaeaea', 200, 0.10));
+
+  const boxUV = (geo, s) => {
+    const p = geo.attributes.position, n = geo.attributes.normal, uv = new Float32Array(p.count * 2);
+    for (let i = 0; i < p.count; i++) {
+      const nx = Math.abs(n.getX(i)), ny = Math.abs(n.getY(i)), nz = Math.abs(n.getZ(i));
+      let u, v;
+      if (nx >= ny && nx >= nz) { u = p.getZ(i); v = p.getY(i); }
+      else if (ny >= nz) { u = p.getX(i); v = p.getZ(i); }
+      else { u = p.getX(i); v = p.getY(i); }
+      uv[i * 2] = u * s; uv[i * 2 + 1] = v * s;
+    }
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  };
+  const bake = (mesh, fn) => {
+    const p = mesh.geometry.attributes.position, n = mesh.geometry.attributes.normal, c = mesh.geometry.attributes.color;
+    if (!c) return;
+    for (let i = 0; i < p.count; i++) {
+      const m = fn(p.getX(i), p.getY(i), p.getZ(i), n.getY(i), c.getX(i), c.getY(i), c.getZ(i));
+      if (!m) continue;
+      c.setXYZ(i, c.getX(i) + (m[0] - c.getX(i)) * m[3], c.getY(i) + (m[1] - c.getY(i)) * m[3], c.getZ(i) + (m[2] - c.getZ(i)) * m[3]);
+    }
+    c.needsUpdate = true;
+  };
+  // Clone the mesh's material and give it the shared maps for its kind.
+  const prep = (mesh, paintTex) => {
+    mesh.material = mesh.material.clone();
+    const kind = mesh.name.split('_').pop();
+    if (kind === 'paint') { boxUV(mesh.geometry, 0.5); if (paintTex) mesh.material.map = paintTex; mesh.material.roughnessMap = hullRough; }
+    else if (kind === 'metal' || kind === 'dark') { boxUV(mesh.geometry, 0.5); mesh.material.roughnessMap = metalRough; }
+    else if (kind === 'foil' || kind === 'foilS') { mesh.material.roughnessMap = foilRough; }
+    mesh.material.needsUpdate = true;
+  };
+  // Split the footpads (all-verts-low triangles) out of a paint mesh into a
+  // sibling with planar per-pad UVs + the regolith speckle map, as on Eagle.
+  const splitPads = (mesh, centres, yTop, tile, sTex) => {
+    const src = mesh.geometry, sp = src.attributes.position, sn = src.attributes.normal, sc = src.attributes.color, su = src.attributes.uv;
+    if (!sc || !su) return;
+    const padIdx = [], restIdx = [];
+    for (let t = 0; t < sp.count; t += 3) {
+      const pad = H(sp.getY(t)) <= yTop && H(sp.getY(t + 1)) <= yTop && H(sp.getY(t + 2)) <= yTop;
+      (pad ? padIdx : restIdx).push(t, t + 1, t + 2);
+    }
+    if (!padIdx.length) return;
+    const build = (idx, planar) => {
+      const n = idx.length, P = new Float32Array(n * 3), N = new Float32Array(n * 3), Cc = new Float32Array(n * 3), U = new Float32Array(n * 2);
+      idx.forEach((vi, j) => {
+        P.set([sp.getX(vi), sp.getY(vi), sp.getZ(vi)], j * 3);
+        N.set([sn.getX(vi), sn.getY(vi), sn.getZ(vi)], j * 3);
+        Cc.set([sc.getX(vi), sc.getY(vi), sc.getZ(vi)], j * 3);
+        if (planar) {
+          let bc = centres[0], bd = 1e9;
+          for (const c of centres) { const d = (sp.getX(vi) - c[0]) ** 2 + (sp.getZ(vi) - c[1]) ** 2; if (d < bd) { bd = d; bc = c; } }
+          U.set([(sp.getX(vi) - bc[0]) / tile + 0.5, (sp.getZ(vi) - bc[1]) / tile + 0.5], j * 2);
+        } else U.set([su.getX(vi), su.getY(vi)], j * 2);
+      });
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(P, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(N, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(Cc, 3));
+      geo.setAttribute('uv', new THREE.BufferAttribute(U, 2));
+      geo.computeBoundingSphere();
+      return geo;
+    };
+    const padMesh = new THREE.Mesh(build(padIdx, true), mesh.material.clone());
+    padMesh.material.map = sTex;
+    padMesh.material.roughnessMap = padRough;
+    padMesh.material.roughness = 1.0;
+    padMesh.material.needsUpdate = true;
+    padMesh.name = mesh.name + '_pads';
+    padMesh.castShadow = padMesh.receiveShadow = true;
+    mesh.geometry = build(restIdx, false);
+    mesh.parent.add(padMesh);
+  };
+  // Name stencil: find the best flat, front-ish paint triangle of the hull
+  // colour in the height band (the loft faces are flat-shaded, so one
+  // triangle's normal is the face's), and lay a decal plane on it, 20 mm
+  // proud (clear of the game's own 12 mm decals). Records the face azimuth
+  // in window.__stencilAz so the test harness can front it to the camera.
+  const placeStencil = (mesh, o) => {
+    const p = mesh.geometry.attributes.position, n = mesh.geometry.attributes.normal, c = mesh.geometry.attributes.color;
+    if (!p || !c) return;
+    let best = null;
+    const hOf = o.hFn || H;   // meshes in a local frame (Highline's pod) can supply their own height axis
+    for (let t = 0; t < p.count; t += 3) {
+      const cx = (p.getX(t) + p.getX(t + 1) + p.getX(t + 2)) / 3, cy = (p.getY(t) + p.getY(t + 1) + p.getY(t + 2)) / 3, cz = (p.getZ(t) + p.getZ(t + 1) + p.getZ(t + 2)) / 3;
+      const h = hOf(cy);
+      if (h < o.h0 || h > o.h1) continue;
+      const rr = Math.hypot(cx, cz);
+      if (o.r0 != null && (rr < o.r0 || rr > o.r1)) continue;
+      const cr = (c.getX(t) + c.getX(t + 1) + c.getX(t + 2)) / 3, cg = (c.getY(t) + c.getY(t + 1) + c.getY(t + 2)) / 3, cb = (c.getZ(t) + c.getZ(t + 1) + c.getZ(t + 2)) / 3;
+      if (Math.hypot(cr - o.col[0], cg - o.col[1], cb - o.col[2]) > o.tol) continue;
+      let nx = (n.getX(t) + n.getX(t + 1) + n.getX(t + 2)) / 3, ny = (n.getY(t) + n.getY(t + 1) + n.getY(t + 2)) / 3, nz = (n.getZ(t) + n.getZ(t + 1) + n.getZ(t + 2)) / 3;
+      const nl = Math.hypot(nx, ny, nz) || 1; nx /= nl; ny /= nl; nz /= nl;
+      if (Math.abs(ny) > 0.4) continue;
+      const ax = p.getX(t + 1) - p.getX(t), ay = p.getY(t + 1) - p.getY(t), az2 = p.getZ(t + 1) - p.getZ(t);
+      const bx = p.getX(t + 2) - p.getX(t), by = p.getY(t + 2) - p.getY(t), bz = p.getZ(t + 2) - p.getZ(t);
+      const area = 0.5 * Math.hypot(ay * bz - az2 * by, az2 * bx - ax * bz, ax * by - ay * bx);
+      if (area < o.minArea) continue;
+      const az = Math.atan2(nz, nx);
+      const score = area * (0.35 + 0.65 * (Math.cos(az - 1.02) * 0.5 + 0.5));
+      if (!best || score > best.score) best = { score, c: [cx, cy, cz], n: [nx, ny, nz], az };
+    }
+    if (!best) return;
+    const st = new THREE.CanvasTexture(mkCanvas(512, 168, (x, W, Hh) => {
+      x.clearRect(0, 0, W, Hh);
+      x.fillStyle = o.ink; x.textAlign = 'center'; x.textBaseline = 'middle';
+      let fs = 96;
+      do { x.font = `700 ${fs}px Arial, sans-serif`; fs -= 6; } while (x.measureText(o.text).width > W - 56 && fs > 28);
+      x.fillText(o.text, W / 2, Hh / 2 - 12);
+      x.fillStyle = o.rule; x.fillRect(W / 2 - 120, Hh - 34, 240, 9);
+    }));
+    st.colorSpace = THREE.SRGBColorSpace; st.anisotropy = 4;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(o.w, o.h),
+      new THREE.MeshStandardMaterial({ map: st, transparent: true, metalness: 0.05, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 }));
+    const zn = new THREE.Vector3(...best.n);
+    const xv = new THREE.Vector3(0, 1, 0).cross(zn).normalize();
+    const yv = new THREE.Vector3().crossVectors(zn, xv);
+    m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xv, yv, zn));
+    m.position.set(best.c[0] + zn.x * 0.02, best.c[1] + zn.y * 0.02, best.c[2] + zn.z * 0.02);
+    if (o.dx) m.position.addScaledVector(xv, o.dx);   // tangent shift: park the name beside hardware that crosses the face centre (Bullwheel's leg graze, Holdfast's centre harpoon)
+    m.name = mesh.name + '_stencil';
+    mesh.parent.add(m);
+    (window.__stencilAz = window.__stencilAz || {})[id] = best.az;
+  };
+  const dustAt = (a) => a <= 0.02 ? null : [DUST[0], DUST[1], DUST[2], a];
+  const sootAt = (a) => a <= 0.01 ? null : [SOOT[0], SOOT[1], SOOT[2], a];
+
+  /* ---- Dowser: dust low on the tripod, hull seams, a light bell scorch.
+     The lidar head group is skipped whole — sensor surfaces stay clean. ---- */
+  if (id === 'dowser') {
+    let paintMesh = null;
+    root.traverse(o => {
+      if (!o.isMesh || !o.name.startsWith('dowser') || o.name.startsWith('dowser_head')) return;
+      const kind = o.name.split('_').pop();
+      if (kind === 'lamp' || kind === 'glass') return;
+      prep(o, hullStd);
+      if (kind === 'paint') {
+        paintMesh = o;
+        bake(o, (x, y, z, ny, r, g, b) => {
+          const h = H(y), rr = Math.hypot(x, z);
+          if (h <= 0.22) return [DUST[0], DUST[1], DUST[2], 0.8 * (0.74 + 0.26 * hash3(x, y, z))];
+          if (h < 0.85 && rr > 1.3) return dustAt(0.5 * ss(0.85, 0.35, h) * grain(x, y, z));
+          return null;
+        });
+      } else if (kind === 'metal') {
+        bake(o, (x, y, z) => dustAt(0.75 * ss(1.15, 0.3, H(y)) * (0.8 + 0.2 * grain(x, y, z))));
+      } else if (kind === 'dark') {
+        bake(o, (x, y, z) => {
+          const h = H(y);
+          if (h >= 1.2 || Math.hypot(x, z) > 0.6) return null;
+          return sootAt(0.55 * ss(0.95, 0.58, h) * (0.85 + 0.15 * grain(x, y, z)));
+        });
+      }
+    });
+    if (paintMesh) {
+      splitPads(paintMesh, [[2.94, 1.7], [-2.94, 1.7], [0, -3.4]], 0.3, 0.85, speckStd);
+      placeStencil(paintMesh, { text: 'DOWSER', ink: 'rgba(40,44,54,0.92)', rule: 'rgba(16,158,168,0.95)', col: lin(0.92, 0.92, 0.92), tol: 0.12, h0: 1.9, h1: 2.5, w: 0.7, h: 0.23, minArea: 0.05 });
+    }
+  }
+
+  /* ---- Bullwheel: the fleet's workhorse — heaviest weathering. Grime map
+     on stage and tanks, worn hazard paint, three strong bell scorches with
+     soot stains on the stage underside, dust everywhere low. ---- */
+  if (id === 'bullwheel') {
+    const YEL = lin(0.95, 0.74, 0.10), YELD = lin(0.82, 0.60, 0.06);
+    const bellC = [90, 210, 330].map(a => atA(a, 1.05, 0));
+    let paintMesh = null;
+    root.traverse(o => {
+      if (!o.isMesh || !o.name.startsWith('bullwheel')) return;
+      const kind = o.name.split('_').pop();
+      if (kind === 'lamp' || kind === 'glass') return;
+      const isTank = o.name.startsWith('bullwheel_tank');
+      prep(o, hullGrime);
+      if (o.name === 'bullwheel_paint') {
+        paintMesh = o;
+        bake(o, (x, y, z, ny, r, g, b) => {
+          const h = H(y), rr = Math.hypot(x, z);
+          if (h <= 0.3) return [DUST[0], DUST[1], DUST[2], 0.9 * (0.74 + 0.26 * hash3(x, y, z))];
+          const dY = Math.hypot(r - YEL[0], g - YEL[1], b - YEL[2]), dD = Math.hypot(r - YELD[0], g - YELD[1], b - YELD[2]);
+          if (h > 2.0 && h < 4.05 && (dY < 0.3 || dD < 0.3)) return [DUST[0], DUST[1], DUST[2], 0.38 * grain(x, y, z) * (0.6 + 0.4 * hash3(x, y, z))];
+          if (h < 2.35 && rr > 2.3) return dustAt(0.42 * ss(2.35, 2.0, h) * grain(x, y, z));
+          return null;
+        });
+      } else if (isTank && kind === 'paint') {
+        bake(o, (x, y, z, ny, r, g, b) => {   // tank-local frame: bottom at y = -1.45
+          if (Math.hypot(r - ORG[0], g - ORG[1], b - ORG[2]) < 0.3) return [DUST[0], DUST[1], DUST[2], 0.3 * grain(x, y, z)];
+          if (y < -0.8) return dustAt(0.55 * ss(-0.8, -1.4, y) * grain(x, y, z));
+          return null;
+        });
+      } else if (isTank && kind === 'metal') {
+        bake(o, (x, y, z) => (y < -1.3 ? [DUST[0], DUST[1], DUST[2], 0.6] : null));
+      } else if (kind === 'metal') {
+        bake(o, (x, y, z) => (Math.hypot(x, z) > 1.0 ? dustAt(0.8 * ss(2.7, 0.6, H(y)) * (0.8 + 0.2 * grain(x, y, z))) : null));
+      } else if (kind === 'dark') {
+        bake(o, (x, y, z) => {
+          const h = H(y);
+          if (h >= 1.85) return null;
+          let dm = 1e9; for (const c of bellC) dm = Math.min(dm, Math.hypot(x - c[0], z - c[2]));
+          if (dm > 0.8) return null;
+          return sootAt(0.92 * ss(1.5, 0.8, h) * (0.85 + 0.15 * grain(x, y, z)));
+        });
+      }
+    });
+    const sTex = new THREE.CanvasTexture(sootCanvas());
+    sTex.colorSpace = THREE.SRGBColorSpace; sTex.anisotropy = 4;
+    for (const c of bellC) {
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(1.0, 36),
+        new THREE.MeshStandardMaterial({ map: sTex, transparent: true, metalness: 0.1, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2, depthWrite: false }));
+      disc.rotation.x = Math.PI / 2;
+      disc.position.set(c[0], 1.936 + LFOOT, c[2]);
+      disc.renderOrder = 3;
+      disc.name = 'bullwheel_soot';
+      root.add(disc);
+    }
+    if (paintMesh) {
+      splitPads(paintMesh, [30, 90, 150, 210, 270, 330].map(a => { const p = atA(a, 5.55, 0); return [p[0], p[2]]; }), 0.32, 1.7, speckStd);
+      // Stencil on the CABIN, not the stage: every stage face is crossed in
+      // projection by its own leg strut (the struts lie in the view plane at
+      // face-on angles and sweep the whole band), so no stage placement
+      // reads clean in a still. The offwhite cab sits above it all, clear.
+      placeStencil(paintMesh, { text: 'BULLWHEEL', ink: 'rgba(40,44,54,0.92)', rule: 'rgba(242,189,26,0.95)', col: lin(0.84, 0.83, 0.80), tol: 0.16, h0: 4.6, h1: 5.3, w: 0.95, h: 0.28, minArea: 0.1 });
+    }
+  }
+
+  /* ---- Plumbline: the clean one. Light dust on the pads only, faint
+     seams, no scorch — restraint is its character. ---- */
+  if (id === 'plumbline') {
+    const BLUE = lin(0.18, 0.38, 0.85);
+    let paintMesh = null;
+    root.traverse(o => {
+      if (!o.isMesh || !o.name.startsWith('plumbline')) return;
+      const kind = o.name.split('_').pop();
+      if (kind === 'lamp' || kind === 'glass') return;
+      prep(o, hullLight);
+      if (kind === 'paint') {
+        paintMesh = o;
+        bake(o, (x, y, z, ny, r, g, b) => {
+          if (H(y) > 0.3) return null;
+          const a = (Math.hypot(r - BLUE[0], g - BLUE[1], b - BLUE[2]) < 0.3 ? 0.3 : 0.45) * (0.74 + 0.26 * hash3(x, y, z));
+          return [DUST[0], DUST[1], DUST[2], a];
+        });
+      }
+    });
+    if (paintMesh) {
+      splitPads(paintMesh, [45, 135, 225, 315].map(a => { const p = atA(a, 3.85, 0); return [p[0], p[2]]; }), 0.32, 1.7, speckLight);
+      placeStencil(paintMesh, { text: 'PLUMBLINE', ink: 'rgba(40,44,54,0.92)', rule: 'rgba(46,97,217,0.95)', col: lin(0.92, 0.92, 0.92), tol: 0.12, h0: 3.1, h1: 3.85, w: 0.85, h: 0.26, minArea: 0.05 });
+    }
+  }
+
+  /* ---- Highline: grease at the winch and frame corners, dust low, four
+     canted bell scorches; the pod — the part that lands — gets heavy dust
+     and a scorched base. Runs on the showroom wrap AFTER anim() has hung
+     the pod in world, so the traverse finds frame and pod alike. Pod and
+     feet bakes are in their own local frames (hook origin / hip origin). ---- */
+  if (id === 'highline') {
+    const bellC = [45, 135, 225, 315].map(a => atA(a, 2.89, 0));
+    const cornerL = [45, 135, 225, 315].map(a => atA(a, 2.7, 0));
+    let framePaint = null, podPaint = null;
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const nm = o.name;
+      if (nm === 'highline_paint') {
+        framePaint = o;
+        prep(o, hullStd);
+        bake(o, (x, y, z, ny, r, g, b) => {
+          const h = H(y), rr = Math.hypot(x, z);
+          if (h <= 0.26) return [DUST[0], DUST[1], DUST[2], 0.85 * (0.74 + 0.26 * hash3(x, y, z))];
+          if (rr < 1.25 && h > 1.8 && h < 3.35) { const a = 0.5 * ss(2.6, 1.9, h) * (0.7 + 0.3 * grain(x, y, z)); return a <= 0.02 ? null : [GREASE[0], GREASE[1], GREASE[2], a]; }
+          let dc = 1e9; for (const c of cornerL) dc = Math.min(dc, Math.hypot(x - c[0], z - c[2]));
+          if (dc < 0.55 && h > 1.95 && h < 2.65) return [GREASE[0], GREASE[1], GREASE[2], 0.35 * (0.7 + 0.3 * grain(x, y, z))];
+          if (rr > 2.2 && h < 2.35) return dustAt(0.3 * ss(2.35, 1.95, h) * grain(x, y, z));
+          return null;
+        });
+      } else if (nm === 'highline_metal') {
+        prep(o, null);
+        bake(o, (x, y, z) => dustAt(0.7 * ss(1.7, 0.25, H(y)) * (0.8 + 0.2 * grain(x, y, z))));
+      } else if (nm === 'highline_dark') {
+        prep(o, null);
+        bake(o, (x, y, z) => {
+          const h = H(y);
+          if (h >= 1.95) return null;
+          let dm = 1e9; for (const c of bellC) dm = Math.min(dm, Math.hypot(x - c[0], z - c[2]));
+          if (dm > 0.7) return null;
+          return sootAt(0.85 * ss(1.8, 1.35, h) * (0.85 + 0.15 * grain(x, y, z)));
+        });
+      } else if (nm === 'highline_foil') {
+        prep(o, null);
+      } else if (nm === 'highline_pod_paint') {
+        podPaint = o;
+        prep(o, hullStd);
+        bake(o, (x, y, z) => dustAt(0.85 * ss(-0.65, -1.55, y) * (0.8 + 0.2 * grain(x, y, z))));
+        bake(o, (x, y, z) => sootAt(0.45 * ss(-1.3, -1.72, y)));
+      } else if (nm === 'highline_pod_metal') {
+        prep(o, null);
+        bake(o, () => [GREASE[0], GREASE[1], GREASE[2], 0.3]);
+      } else if (nm === 'highline_podfeet_metal') {
+        prep(o, null);
+        bake(o, (x, y, z) => [DUST[0], DUST[1], DUST[2], (y < -2.15 ? 0.8 : 0.45) * (0.75 + 0.25 * grain(x, y, z))]);
+      }
+    });
+    if (framePaint) {
+      splitPads(framePaint, [0, 90, 180, 270].map(a => { const p = atA(a, 2.6, 0); return [p[0], p[2]]; }), 0.28, 0.8, speckStd);
+    }
+    // Stencil goes on the POD, not the winch housing: the corner engine pods
+    // block the housing's faces from almost every showroom angle, while the
+    // pod hangs front and centre. Pod-local frame (hook origin): the pod's
+    // only straight vertical band is the orange loft at local y ≈ -0.80
+    // (above it is the 35° shoulder cone, below it a char stripe) — measured
+    // from the merged buffer, its faces already carry ~0.2 of dust blend,
+    // which the 0.22 colour tolerance is sized to admit.
+    if (podPaint) {
+      placeStencil(podPaint, { text: 'HIGHLINE', ink: 'rgba(32,30,28,0.94)', rule: 'rgba(255,255,255,0.9)', col: lin(0.95, 0.44, 0.10), tol: 0.22, hFn: y => y, h0: -0.92, h1: -0.68, w: 0.5, h: 0.16, minArea: 0.03 });
+    }
+  }
+
+  /* ---- Holdfast: regolith caked on the spike feet and leg joints, dust
+     on the orange knees, worn harpoon launchers (bare metal through the
+     paint at the mounts), hull seams, one bell scorch. Leg meshes bake in
+     their own local frames (origin at the joint, +y along the segment). ---- */
+  if (id === 'holdfast') {
+    const launchB = [[1.62, 1.9, 0], [0, 1.9, 1.5], [-1.62, 1.9, 0], [0, 1.9, -1.5]];
+    let mainPaint = null;
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      const nm = o.name;
+      if (nm === 'holdfast_paint') {
+        mainPaint = o;
+        prep(o, hullStd);
+        bake(o, (x, y, z, ny, r, g, b) => {
+          const h = H(y), rr = Math.hypot(x, z);
+          for (const B of launchB) {
+            const d3 = Math.hypot(x - B[0], h - B[1], z - B[2]);
+            if (d3 < 0.8) return [TITAN[0], TITAN[1], TITAN[2], 0.38 * (0.6 + 0.4 * hash3(x, y, z)) * ss(0.8, 0.45, d3)];
+          }
+          if (h < 1.8 && rr > 1.25) return dustAt(0.42 * ss(1.8, 1.6, h) * grain(x, y, z));
+          return null;
+        });
+      } else if (nm === 'holdfast_metal') {
+        prep(o, null);   // chrome cold-gas tanks: roughness variation only
+      } else if (nm === 'holdfast_dark') {
+        prep(o, null);
+        bake(o, (x, y, z) => {
+          const h = H(y);
+          if (h >= 1.45 || Math.hypot(x, z) > 0.75) return null;
+          return sootAt(0.88 * ss(1.3, 0.88, h) * (0.85 + 0.15 * grain(x, y, z)));
+        });
+      } else if (nm === 'holdfast_foil') {
+        prep(o, null);
+      } else if (nm === 'holdfast_upper_paint') {
+        prep(o, hullStd);
+        bake(o, (x, y, z) => dustAt(0.5 * ss(1.1, 2.05, y) * (0.75 + 0.25 * grain(x, y, z))));
+      } else if (nm === 'holdfast_lower_metal') {
+        prep(o, null);
+        bake(o, (x, y, z) => dustAt(0.75 * ss(1.7, 3.25, y) * (0.75 + 0.25 * grain(x, y, z))));
+      } else if (nm === 'holdfast_knee_paint') {
+        prep(o, hullStd);
+        bake(o, (x, y, z) => (y > 0.02 ? null : [DUST[0], DUST[1], DUST[2], 0.55 * ss(0.02, -0.18, y) * (0.75 + 0.25 * hash3(x, y, z))]));
+      } else if (nm === 'holdfast_foot_paint') {
+        prep(o, hullStd);
+        o.material.roughnessMap = padRough;
+        bake(o, (x, y, z, ny, r, g, b) => [DUST[0], DUST[1], DUST[2], (Math.hypot(r - ORG[0], g - ORG[1], b - ORG[2]) < 0.3 ? 0.65 : 0.85) * (0.8 + 0.2 * hash3(x, y, z))]);
+      } else if (nm === 'holdfast_foot_metal') {
+        prep(o, null);
+        bake(o, () => [DUST[0], DUST[1], DUST[2], 0.5]);
+      } else if (nm === 'holdfast_harpoon_paint') {
+        prep(o, hullStd);
+        bake(o, (x, y, z) => (y > 0.18 ? [TITAN[0], TITAN[1], TITAN[2], 0.35] : [DUST[0], DUST[1], DUST[2], 0.4 * (0.7 + 0.3 * grain(x, y, z))]));
+      } else if (nm === 'holdfast_harpoon_metal') {
+        prep(o, null);
+        bake(o, () => [DUST[0], DUST[1], DUST[2], 0.35]);
+      }
+    });
+    if (mainPaint) {
+      placeStencil(mainPaint, { text: 'HOLDFAST', ink: 'rgba(232,228,218,0.94)', rule: 'rgba(242,112,26,0.95)', col: lin(0.32, 0.34, 0.37), tol: 0.09, h0: 1.95, h1: 2.4, w: 1.05, h: 0.3, minArea: 0.08, dx: 0.5 });
+    }
+  }
+}
+
 function buildShowroom(id){
-  if (id === 'eagle2') return buildEagle(CRK);      // buildEagle returns the group directly
+  if (id === 'eagle2'){ const g = buildEagle(CRK); textureEagleProof(g); return g; }   // buildEagle returns the group directly; texture proof applied glue-side
   const built = LBUILD[id](CRK);
   if (id === 'highline'){
     // Showroom pose (fix C3): drive the game's own anim() with a synthetic
@@ -930,8 +1688,10 @@ function buildShowroom(id){
       p53:false, dead:false, ms:1, scale:20, t:0.2, dt:0,
       toGame:([x, y]) => [x, y], toScene:x => x,
     });
+    textureLander('highline', wrap);   // after anim: the pod has moved into world, where the traverse finds it
     return wrap;
   }
+  textureLander(id, built.g);
   return built.g;                                    // the others return { g, g53, ... } — Modern group only
 }
 
